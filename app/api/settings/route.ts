@@ -2,20 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDatabase } from '@/lib/mongodb';
 
 export async function GET() {
-  console.log('GET /api/settings - Request started');
-  
   try {
-    console.log('Attempting to get database...');
     const db = await getDatabase();
-    console.log('Database connection successful');
-    
-    console.log('Querying expenses-settings collection...');
     const settings = await db
       .collection('expenses-settings')
       .findOne({ type: 'contribution' });
     
     if (!settings) {
-      console.log('No settings found, returning defaults');
       return NextResponse.json({
         settings: {
           anaAmount: 765,
@@ -25,7 +18,6 @@ export async function GET() {
       });
     }
     
-    console.log('Settings found:', settings);
     return NextResponse.json({ settings });
   } catch (error) {
     console.error('GET /api/settings - Error occurred:', error);
@@ -46,17 +38,13 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  console.log('POST /api/settings - Request started');
   
   try {
-    console.log('Parsing request body...');
     const body = await request.json();
     const { anaAmount, husbandAmount, totalBudget } = body;
-    console.log('Request body:', { anaAmount, husbandAmount, totalBudget });
 
     // Validation
     if (anaAmount == null || husbandAmount == null) {
-      console.log('Validation failed: missing required fields');
       return NextResponse.json(
         { error: 'Ana amount and husband amount are required' },
         { status: 400 }
@@ -64,7 +52,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (isNaN(parseFloat(anaAmount)) || isNaN(parseFloat(husbandAmount))) {
-      console.log('Validation failed: invalid amounts');
+
       return NextResponse.json(
         { error: 'Amounts must be valid numbers' },
         { status: 400 }
@@ -79,14 +67,8 @@ export async function POST(request: NextRequest) {
       updatedAt: new Date()
     };
 
-    console.log('Settings data to save:', settingsData);
-
     try {
-      console.log('Getting database connection...');
       const db = await getDatabase();
-      console.log('Database connection successful');
-      
-      console.log('Upserting settings...');
       const result = await db
         .collection('expenses-settings')
         .replaceOne(
@@ -94,8 +76,6 @@ export async function POST(request: NextRequest) {
           settingsData,
           { upsert: true }
         );
-      
-      console.log('Settings saved successfully:', result);
       
       return NextResponse.json({
         success: true,
