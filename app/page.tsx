@@ -348,24 +348,6 @@ export default function Home() {
   const anaBalance = anaActualSpent - anaExpectedContribution;
   const husbandBalance = husbandActualSpent - husbandExpectedContribution;
 
-  const getDebtInfo = () => {
-    if (Math.abs(anaBalance) < 0.01) {
-      return { message: "All settled up! 🎉", color: "text-green-600" };
-    } else if (anaBalance > 0) {
-      return { 
-        message: `Eido owes Ana ₪${Math.abs(anaBalance).toFixed(2)}`, 
-        color: "text-orange-600" 
-      };
-    } else {
-      return { 
-        message: `Ana owes Eido ₪${Math.abs(anaBalance).toFixed(2)}`, 
-        color: "text-orange-600" 
-      };
-    }
-  };
-
-  const debtInfo = getDebtInfo();
-
   // Show loading state
   if (isLoading) {
     return (
@@ -424,7 +406,7 @@ export default function Home() {
 
         {/* Individual Spending Card */}
         <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <h3 className="font-medium text-gray-900 mb-3 text-center">Actual Spending</h3>
+          <h3 className="font-medium text-gray-900 mb-3 text-center">Spending</h3>
           <div className="grid grid-cols-2 gap-4">
             <div className="text-center">
               <div className="text-lg font-semibold text-green-600">
