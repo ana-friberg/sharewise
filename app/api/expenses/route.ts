@@ -15,63 +15,54 @@ export interface Expense {
 
 // GET - Fetch all expenses
 export async function GET() {
+  console.log('GET /api/expenses - Request started');
   
   let db;
-  try {
-    db = await getDatabase();
+  let retryCount = 0;
+  const maxRetries = 2;
+  
+  while (retryCount <= maxRetries) {
+    try {
+      console.log(`Attempt ${retryCount + 1} - Getting database connection...`);
+      db = await getDatabase();
+      console.log('Database connection successful');
+      
+      const expenses = await db
+        .collection<Expense>('expenses-data')
+        .find({})
+        .sort({ createdAt: -1 })
+        .toArray();
 
-    const expenses = await db
-      .collection<Expense>('expenses-data')
-      .find({})
-      .sort({ createdAt: -1 })
-      .toArray();
-    return NextResponse.json({ expenses });
-    
-  } catch (error) {
-    console.error('GET /api/expenses - Error occurred:', error);
-    console.error('Error details:', {
-      message: error instanceof Error ? error.message : 'Unknown error',
-      name: error instanceof Error ? error.name : 'Unknown',
-      stack: error instanceof Error ? error.stack : 'No stack trace'
-    });
-
-    // Handle specific MongoDB errors
-    if (error instanceof Error) {
-      if (error.message.includes('Topology is closed') || 
-          error.message.includes('ENOTFOUND') || 
-          error.message.includes('ECONNREFUSED')) {
+      console.log(`Successfully fetched ${expenses.length} expenses`);
+      return NextResponse.json({ expenses });
+      
+    } catch (error) {
+      console.error(`Attempt ${retryCount + 1} failed:`, error);
+      retryCount++;
+      
+      if (retryCount > maxRetries) {
+        console.error('All retry attempts failed');
         
-        // Retry once with fresh connection
-        try {
-          db = await getDatabase();
-          const expenses = await db
-            .collection<Expense>('expenses-data')
-            .find({})
-            .sort({ createdAt: -1 })
-            .toArray();
-          
-          return NextResponse.json({ expenses });
-        } catch (retryError) {
-          console.error('Retry failed:', retryError);
+        // Handle SSL/TLS errors specifically
+        if (error instanceof Error && 
+            (error.message.includes('SSL') || 
+             error.message.includes('TLS') || 
+             error.message.includes('ssl'))) {
           return NextResponse.json(
-            { error: 'Service temporarily unavailable' },
+            { error: 'Database SSL connection failed' },
             { status: 503 }
           );
         }
-      }
-      
-      if (error.message.includes('authentication')) {
+        
         return NextResponse.json(
-          { error: 'Authentication failed' },
-          { status: 401 }
+          { error: 'Service temporarily unavailable' },
+          { status: 503 }
         );
       }
+      
+      // Wait before retry
+      await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
     }
-    
-    return NextResponse.json(
-      { error: 'Failed to fetch expenses' },
-      { status: 500 }
-    );
   }
 }
 
