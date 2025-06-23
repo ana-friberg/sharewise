@@ -16,7 +16,6 @@ export async function GET() {
     
     if (!settings) {
       console.log('No settings found, returning defaults');
-      // Return default settings if none exist
       return NextResponse.json({
         settings: {
           anaAmount: 765,
@@ -32,33 +31,17 @@ export async function GET() {
     console.error('GET /api/settings - Error occurred:', error);
     console.error('Error details:', {
       message: error instanceof Error ? error.message : 'Unknown error',
-      name: error instanceof Error ? error.name : 'Unknown',
-      stack: error instanceof Error ? error.stack : 'No stack trace',
-      cause: (error as any)?.cause,
-      code: (error as any)?.code
+      stack: error instanceof Error ? error.stack : 'No stack trace'
     });
-
-    if (error instanceof Error) {
-      if (error.message.includes('ENOTFOUND') || error.message.includes('ECONNREFUSED')) {
-        console.log('Network connection error detected');
-        return NextResponse.json(
-          { error: 'Service temporarily unavailable' },
-          { status: 503 }
-        );
-      }
-      if (error.message.includes('authentication')) {
-        console.log('Authentication error detected');
-        return NextResponse.json(
-          { error: 'Authentication failed' },
-          { status: 401 }
-        );
-      }
-    }
     
-    return NextResponse.json(
-      { error: 'Failed to fetch settings' },
-      { status: 500 }
-    );
+    // Return default settings on any error
+    return NextResponse.json({
+      settings: {
+        anaAmount: 765,
+        husbandAmount: 935,
+        totalBudget: 1700
+      }
+    });
   }
 }
 
@@ -68,9 +51,8 @@ export async function POST(request: NextRequest) {
   try {
     console.log('Parsing request body...');
     const body = await request.json();
-    console.log('Request body:', body);
-    
     const { anaAmount, husbandAmount, totalBudget } = body;
+    console.log('Request body:', { anaAmount, husbandAmount, totalBudget });
 
     // Validation
     if (anaAmount == null || husbandAmount == null) {
@@ -97,57 +79,43 @@ export async function POST(request: NextRequest) {
       updatedAt: new Date()
     };
 
-    console.log('Created settings object:', settingsData);
-    console.log('Attempting to get database...');
-    
-    const db = await getDatabase();
-    console.log('Database connection successful');
-    
-    console.log('Upserting settings into expenses-settings collection...');
-    const result = await db
-      .collection('expenses-settings')
-      .replaceOne(
-        { type: 'contribution' },
-        settingsData,
-        { upsert: true }
-      );
-    
-    console.log('Settings upserted successfully. Result:', result);
-    
-    return NextResponse.json({
-      success: true,
-      settings: {
-        anaAmount: settingsData.anaAmount,
-        husbandAmount: settingsData.husbandAmount,
-        totalBudget: settingsData.totalBudget
-      }
-    });
+    console.log('Settings data to save:', settingsData);
+
+    try {
+      console.log('Getting database connection...');
+      const db = await getDatabase();
+      console.log('Database connection successful');
+      
+      console.log('Upserting settings...');
+      const result = await db
+        .collection('expenses-settings')
+        .replaceOne(
+          { type: 'contribution' },
+          settingsData,
+          { upsert: true }
+        );
+      
+      console.log('Settings saved successfully:', result);
+      
+      return NextResponse.json({
+        success: true,
+        settings: {
+          anaAmount: settingsData.anaAmount,
+          husbandAmount: settingsData.husbandAmount,
+          totalBudget: settingsData.totalBudget
+        }
+      });
+    } catch (dbError) {
+      console.error('Database operation failed:', dbError);
+      throw dbError;
+    }
+
   } catch (error) {
     console.error('POST /api/settings - Error occurred:', error);
     console.error('Error details:', {
       message: error instanceof Error ? error.message : 'Unknown error',
-      name: error instanceof Error ? error.name : 'Unknown',
-      stack: error instanceof Error ? error.stack : 'No stack trace',
-      cause: (error as any)?.cause,
-      code: (error as any)?.code
+      stack: error instanceof Error ? error.stack : 'No stack trace'
     });
-
-    if (error instanceof Error) {
-      if (error.message.includes('ENOTFOUND') || error.message.includes('ECONNREFUSED')) {
-        console.log('Network connection error detected');
-        return NextResponse.json(
-          { error: 'Service temporarily unavailable' },
-          { status: 503 }
-        );
-      }
-      if (error.message.includes('authentication')) {
-        console.log('Authentication error detected');
-        return NextResponse.json(
-          { error: 'Authentication failed' },
-          { status: 401 }
-        );
-      }
-    }
     
     return NextResponse.json(
       { error: 'Failed to update settings' },
