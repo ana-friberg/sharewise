@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 
 interface Expense {
   _id?: string;
@@ -13,8 +14,9 @@ interface Expense {
 }
 
 interface ContributionSettings {
-  anaPercentage: number;
-  husbandPercentage: number;
+  anaAmount: number;
+  husbandAmount: number;
+  totalBudget: number;
 }
 
 export default function Home() {
@@ -30,8 +32,9 @@ export default function Home() {
   const [expenseToDelete, setExpenseToDelete] = useState<number | null>(null);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [contributionSettings, setContributionSettings] = useState<ContributionSettings>({
-    anaPercentage: 45,
-    husbandPercentage: 55
+    anaAmount: 765,
+    husbandAmount: 935,
+    totalBudget: 1700
   });
   const [isLoading, setIsLoading] = useState(true);
 
@@ -52,10 +55,17 @@ export default function Home() {
       }
 
       // Load contribution settings
-      const settingsResponse = await fetch('/api/settings');
-      if (settingsResponse.ok) {
-        const settingsData = await settingsResponse.json();
-        setContributionSettings(settingsData.settings);
+      try {
+        const settingsResponse = await fetch('/api/settings');
+        if (settingsResponse.ok) {
+          const settingsData = await settingsResponse.json();
+          if (settingsData.settings) {
+            setContributionSettings(settingsData.settings);
+          }
+        }
+      } catch (settingsError) {
+        console.log('Settings API not available, using defaults');
+        // Keep the default settings already set in state
       }
     } catch (error) {
       console.error('Error loading data:', error);
@@ -163,11 +173,12 @@ export default function Home() {
     setShowStoreDropdown(false);
   };
 
-  const updateContributionSettings = async (anaPercent: number) => {
+  const updateContributionSettings = async (anaAmount: number, husbandAmount: number) => {
     try {
       const newSettings = {
-        anaPercentage: anaPercent,
-        husbandPercentage: 100 - anaPercent
+        anaAmount: anaAmount,
+        husbandAmount: husbandAmount,
+        totalBudget: anaAmount + husbandAmount
       };
 
       const response = await fetch('/api/settings', {
@@ -189,29 +200,115 @@ export default function Home() {
     }
   };
 
-  // Export data functionality
+  // Export data functionality - Updated to export as Excel
   const exportData = async () => {
     try {
-      const dataToExport = {
-        expenses,
-        contributionSettings,
-        exportDate: new Date().toISOString()
-      };
+      // Create a new workbook
+      const workbook = XLSX.utils.book_new();
       
-      const dataStr = JSON.stringify(dataToExport, null, 2);
-      const dataBlob = new Blob([dataStr], { type: 'application/json' });
-      const url = URL.createObjectURL(dataBlob);
+      // Prepare expenses data for Excel
+      const expensesData = expenses.map(expense => ({
+        'Date': expense.date,
+        'Store Name': expense.storeName,
+        'Category': expense.category,
+        'Person': expense.person === 'husband' ? 'Eido' : expense.person,
+        'Amount (₪)': expense.amount,
+        'Description': expense.description || '',
+      }));
       
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `expenses-backup-${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      // Create expenses worksheet
+      const expensesWorksheet = XLSX.utils.json_to_sheet(expensesData);
+      
+      // Set column widths for better formatting
+      const expensesColWidths = [
+        { wch: 12 }, // Date
+        { wch: 20 }, // Store Name
+        { wch: 15 }, // Category
+        { wch: 10 }, // Person
+        { wch: 12 }, // Amount
+        { wch: 30 }, // Description
+      ];
+      expensesWorksheet['!cols'] = expensesColWidths;
+      
+      // Add expenses sheet to workbook
+      XLSX.utils.book_append_sheet(workbook, expensesWorksheet, 'Expenses');
+      
+      // Create summary data
+      const summaryData = [
+        { 'Category': 'Total Expenses', 'Amount (₪)': totalExpenses.toFixed(2) },
+        { 'Category': 'Total Budget', 'Amount (₪)': totalBudget.toFixed(2) },
+        { 'Category': '', 'Amount (₪)': '' }, // Empty row
+        { 'Category': 'Ana - Actual Spent', 'Amount (₪)': anaActualSpent.toFixed(2) },
+        { 'Category': 'Ana - Expected', 'Amount (₪)': anaExpectedContribution.toFixed(2) },
+        { 'Category': 'Ana - Balance', 'Amount (₪)': anaBalance.toFixed(2) },
+        { 'Category': '', 'Amount (₪)': '' }, // Empty row
+        { 'Category': 'Eido - Actual Spent', 'Amount (₪)': husbandActualSpent.toFixed(2) },
+        { 'Category': 'Eido - Expected', 'Amount (₪)': husbandExpectedContribution.toFixed(2) },
+        { 'Category': 'Eido - Balance', 'Amount (₪)': husbandBalance.toFixed(2) },
+        { 'Category': '', 'Amount (₪)': '' }, // Empty row
+        { 'Category': 'Export Date', 'Amount (₪)': new Date().toLocaleDateString() },
+      ];
+      
+      // Create summary worksheet
+      const summaryWorksheet = XLSX.utils.json_to_sheet(summaryData);
+      
+      // Set column widths for summary
+      const summaryColWidths = [
+        { wch: 25 }, // Category
+        { wch: 15 }, // Amount
+      ];
+      summaryWorksheet['!cols'] = summaryColWidths;
+      
+      // Add summary sheet to workbook
+      XLSX.utils.book_append_sheet(workbook, summaryWorksheet, 'Summary');
+      
+      // Create category breakdown data
+      const categoryBreakdown = expenses.reduce((acc, expense) => {
+        const category = expense.category;
+        if (!acc[category]) {
+          acc[category] = { total: 0, count: 0, ana: 0, eido: 0 };
+        }
+        acc[category].total += expense.amount;
+        acc[category].count += 1;
+        if (expense.person === 'ana') {
+          acc[category].ana += expense.amount;
+        } else {
+          acc[category].eido += expense.amount;
+        }
+        return acc;
+      }, {} as Record<string, { total: number; count: number; ana: number; eido: number }>);
+      
+      const categoryData = Object.entries(categoryBreakdown).map(([category, data]) => ({
+        'Category': category,
+        'Total Amount (₪)': data.total.toFixed(2),
+        'Number of Expenses': data.count,
+        'Ana Amount (₪)': data.ana.toFixed(2),
+        'Eido Amount (₪)': data.eido.toFixed(2),
+      }));
+      
+      // Create category worksheet
+      const categoryWorksheet = XLSX.utils.json_to_sheet(categoryData);
+      
+      // Set column widths for category breakdown
+      const categoryColWidths = [
+        { wch: 15 }, // Category
+        { wch: 15 }, // Total Amount
+        { wch: 18 }, // Number of Expenses
+        { wch: 15 }, // Ana Amount
+        { wch: 15 }, // Eido Amount
+      ];
+      categoryWorksheet['!cols'] = categoryColWidths;
+      
+      // Add category sheet to workbook
+      XLSX.utils.book_append_sheet(workbook, categoryWorksheet, 'Category Breakdown');
+      
+      // Generate Excel file and download
+      const fileName = `expenses-report-${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(workbook, fileName);
+      
     } catch (error) {
-      console.error('Error exporting data:', error);
-      alert('Error exporting data. Please try again.');
+      console.error('Error exporting data to Excel:', error);
+      alert('Error exporting data to Excel. Please try again.');
     }
   };
 
@@ -229,7 +326,7 @@ export default function Home() {
       await Promise.all(deletePromises);
 
       // Reset settings to default
-      await updateContributionSettings(45);
+      await updateContributionSettings(765, 935);
       
       setExpenses([]);
     } catch (error) {
@@ -242,9 +339,10 @@ export default function Home() {
   const anaActualSpent = expenses.filter(e => e.person === 'ana').reduce((sum, e) => sum + e.amount, 0);
   const husbandActualSpent = expenses.filter(e => e.person === 'husband').reduce((sum, e) => sum + e.amount, 0);
 
-  // Calculate expected contributions
-  const anaExpectedContribution = (totalExpenses * contributionSettings.anaPercentage) / 100;
-  const husbandExpectedContribution = (totalExpenses * contributionSettings.husbandPercentage) / 100;
+  // Calculate expected contributions (fixed amounts) with null safety
+  const anaExpectedContribution = contributionSettings?.anaAmount || 765;
+  const husbandExpectedContribution = contributionSettings?.husbandAmount || 935;
+  const totalBudget = contributionSettings?.totalBudget || 1700;
 
   // Calculate who owes whom
   const anaBalance = anaActualSpent - anaExpectedContribution;
@@ -255,12 +353,12 @@ export default function Home() {
       return { message: "All settled up! 🎉", color: "text-green-600" };
     } else if (anaBalance > 0) {
       return { 
-        message: `Husband owes Ana ₪${Math.abs(anaBalance).toFixed(2)}`, 
+        message: `Eido owes Ana ₪${Math.abs(anaBalance).toFixed(2)}`, 
         color: "text-orange-600" 
       };
     } else {
       return { 
-        message: `Ana owes Husband ₪${Math.abs(anaBalance).toFixed(2)}`, 
+        message: `Ana owes Eido ₪${Math.abs(anaBalance).toFixed(2)}`, 
         color: "text-orange-600" 
       };
     }
@@ -318,6 +416,9 @@ export default function Home() {
               ₪{totalExpenses.toFixed(2)}
             </div>
             <div className="text-sm text-gray-500">Total Expenses</div>
+            <div className="text-xs text-gray-400 mt-1">
+              Budget: ₪{totalBudget.toFixed(2)}
+            </div>
           </div>
         </div>
 
@@ -335,35 +436,7 @@ export default function Home() {
               <div className="text-lg font-semibold text-purple-600">
                 ₪{husbandActualSpent.toFixed(2)}
               </div>
-              <div className="text-xs text-gray-500">Husband</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Contribution Analysis Card */}
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <h3 className="font-medium text-gray-900 mb-3 text-center">Expected Contribution</h3>
-          <div className="grid grid-cols-2 gap-4 mb-3">
-            <div className="text-center">
-              <div className="text-sm font-medium text-gray-700">
-                ₪{anaExpectedContribution.toFixed(2)}
-              </div>
-              <div className="text-xs text-gray-500">Ana ({contributionSettings.anaPercentage}%)</div>
-            </div>
-            <div className="text-center">
-              <div className="text-sm font-medium text-gray-700">
-                ₪{husbandExpectedContribution.toFixed(2)}
-              </div>
-              <div className="text-xs text-gray-500">Husband ({contributionSettings.husbandPercentage}%)</div>
-            </div>
-          </div>
-          
-          {/* Balance Indicator */}
-          <div className="border-t pt-3">
-            <div className="text-center">
-              <div className={`font-medium ${debtInfo.color}`}>
-                {debtInfo.message}
-              </div>
+              <div className="text-xs text-gray-500">Eido</div>
             </div>
           </div>
         </div>
@@ -373,20 +446,17 @@ export default function Home() {
           <h3 className="font-medium text-gray-900 mb-3 text-center">Balance Details</h3>
           <div className="space-y-2">
             <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">Ana's Balance:</span>
+              <span className="text-sm text-gray-600">Ana's Balance (₪{anaExpectedContribution.toFixed(0)}):</span>
               <span className={`text-sm font-medium ${anaBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 {anaBalance >= 0 ? '+' : ''}₪{anaBalance.toFixed(2)}
               </span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">Husband's Balance:</span>
+              <span className="text-sm text-gray-600">Eido's Balance (₪{husbandExpectedContribution.toFixed(0)}):</span>
               <span className={`text-sm font-medium ${husbandBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 {husbandBalance >= 0 ? '+' : ''}₪{husbandBalance.toFixed(2)}
               </span>
             </div>
-          </div>
-          <div className="text-xs text-gray-400 mt-2 text-center">
-            Positive = overpaid, Negative = underpaid
           </div>
         </div>
       </div>
@@ -426,7 +496,7 @@ export default function Home() {
             className="w-full p-3 border border-gray-200 rounded-lg text-base bg-gray-50 focus:bg-white focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-colors appearance-none"
           >
             <option value="ana">👩 Ana</option>
-            <option value="husband">👨 Husband</option>
+            <option value="husband">👨 Eido</option>
           </select>
           
           <div className="relative">
@@ -522,7 +592,7 @@ export default function Home() {
                     {expense.category}
                   </span>
                   <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
-                    {expense.person}
+                    {expense.person === 'husband' ? 'eido' : expense.person}
                   </span>
                   <span className="text-gray-400 ml-auto">
                     {expense.date}
@@ -544,35 +614,60 @@ export default function Home() {
             
             <div className="space-y-4">
               <div>
-                <h4 className="text-sm font-medium text-gray-700 mb-2">Contribution Split</h4>
-                <label className="block text-sm text-gray-600 mb-2">
-                  Ana's Contribution: {contributionSettings.anaPercentage}%
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={contributionSettings.anaPercentage}
-                  onChange={(e) => {
-                    const anaPercent = parseInt(e.target.value);
-                    setContributionSettings({
-                      anaPercentage: anaPercent,
-                      husbandPercentage: 100 - anaPercent
-                    });
-                  }}
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                />
-                <div className="flex justify-between text-xs text-gray-500 mt-1">
-                  <span>0%</span>
-                  <span>50%</span>
-                  <span>100%</span>
+                <h4 className="text-sm font-medium text-gray-700 mb-2">Contribution Settings</h4>
+                
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">
+                      Ana's Contribution (₪)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={contributionSettings.anaAmount}
+                      onChange={(e) => {
+                        const anaAmount = parseFloat(e.target.value) || 0;
+                        setContributionSettings(prev => ({
+                          ...prev,
+                          anaAmount: anaAmount,
+                          totalBudget: anaAmount + prev.husbandAmount
+                        }));
+                      }}
+                      className="w-full p-2 border border-gray-200 rounded-lg text-sm"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">
+                      Eido's Contribution (₪)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={contributionSettings.husbandAmount}
+                      onChange={(e) => {
+                        const husbandAmount = parseFloat(e.target.value) || 0;
+                        setContributionSettings(prev => ({
+                          ...prev,
+                          husbandAmount: husbandAmount,
+                          totalBudget: prev.anaAmount + husbandAmount
+                        }));
+                      }}
+                      className="w-full p-2 border border-gray-200 rounded-lg text-sm"
+                    />
+                  </div>
                 </div>
               </div>
               
               <div className="text-center p-3 bg-gray-50 rounded-lg">
                 <div className="text-sm">
-                  <div>Ana: {contributionSettings.anaPercentage}%</div>
-                  <div>Husband: {contributionSettings.husbandPercentage}%</div>
+                  <div>Ana: ₪{contributionSettings.anaAmount.toFixed(2)}</div>
+                  <div>Eido: ₪{contributionSettings.husbandAmount.toFixed(2)}</div>
+                  <div className="font-medium text-blue-600 border-t pt-2 mt-2">
+                    Total Budget: ₪{contributionSettings.totalBudget.toFixed(2)}
+                  </div>
                 </div>
               </div>
 
@@ -603,7 +698,7 @@ export default function Home() {
                 Cancel
               </button>
               <button
-                onClick={() => updateContributionSettings(contributionSettings.anaPercentage)}
+                onClick={() => updateContributionSettings(contributionSettings.anaAmount, contributionSettings.husbandAmount)}
                 className="flex-1 bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors"
               >
                 Save
