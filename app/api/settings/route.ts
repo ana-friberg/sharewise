@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
 
     try {
       const db = await getDatabase();
-      const result = await db
+      await db
         .collection('expenses-settings')
         .replaceOne(
           { type: 'contribution' },
