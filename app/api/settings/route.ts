@@ -1,105 +1,144 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDatabase } from '@/lib/mongodb';
 
-export async function GET() {
+// CORS Headers
+const corsHeaders = {
+  'Access-Control-Allow-Origin': process.env.NODE_ENV === 'production' 
+    ? (process.env.URL_DOMAIN || 'https://expenses-app-tau-sooty.vercel.app')
+    : '*',
+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+// Rate limiting (shared with expenses route)
+const rateLimit = new Map();
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const windowMs = 15 * 60 * 1000; // 15 minutes
+  const maxRequests = 100;
+
+  if (!rateLimit.has(ip)) {
+    rateLimit.set(ip, { count: 1, resetTime: now + windowMs });
+    return true;
+  }
+
+  const limit = rateLimit.get(ip);
+  if (now > limit.resetTime) {
+    limit.count = 1;
+    limit.resetTime = now + windowMs;
+    return true;
+  }
+
+  if (limit.count >= maxRequests) {
+    return false;
+  }
+
+  limit.count++;
+  return true;
+}
+
+function getClientIP(request: NextRequest): string {
+  const forwardedFor = request.headers.get('x-forwarded-for');
+  const realIP = request.headers.get('x-real-ip');
+  const remoteAddr = request.headers.get('x-vercel-forwarded-for');
+  
+  if (forwardedFor) {
+    return forwardedFor.split(',')[0].trim();
+  }
+  if (realIP) {
+    return realIP;
+  }
+  if (remoteAddr) {
+    return remoteAddr;
+  }
+  return 'unknown';
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: corsHeaders,
+  });
+}
+
+export async function GET(request: NextRequest) {
+  const clientIP = getClientIP(request);
+  
+  if (!checkRateLimit(clientIP)) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded' },
+      { status: 429, headers: corsHeaders }
+    );
+  }
+
   try {
     const db = await getDatabase();
     const settings = await db
-      .collection('expenses-settings')
+      .collection('settings-data')
       .findOne({ type: 'contribution' });
-    
-    if (!settings) {
-      return NextResponse.json({
-        settings: {
-          anaAmount: 765,
-          husbandAmount: 935,
-          totalBudget: 1700
-        }
-      });
-    }
-    
-    return NextResponse.json({ settings });
+
+    return NextResponse.json(
+      { settings },
+      { headers: corsHeaders }
+    );
   } catch (error) {
-    console.error('GET /api/settings - Error occurred:', error);
-    console.error('Error details:', {
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : 'No stack trace'
-    });
-    
-    // Return default settings on any error
-    return NextResponse.json({
-      settings: {
-        anaAmount: 765,
-        husbandAmount: 935,
-        totalBudget: 1700
-      }
-    });
+    console.error('GET /api/settings - Error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500, headers: corsHeaders }
+    );
   }
 }
 
 export async function POST(request: NextRequest) {
+  const clientIP = getClientIP(request);
   
+  if (!checkRateLimit(clientIP)) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded' },
+      { status: 429, headers: corsHeaders }
+    );
+  }
+
   try {
     const body = await request.json();
     const { anaAmount, husbandAmount, totalBudget } = body;
 
     // Validation
-    if (anaAmount == null || husbandAmount == null) {
+    if (typeof anaAmount !== 'number' || typeof husbandAmount !== 'number') {
       return NextResponse.json(
-        { error: 'Ana amount and husband amount are required' },
-        { status: 400 }
-      );
-    }
-
-    if (isNaN(parseFloat(anaAmount)) || isNaN(parseFloat(husbandAmount))) {
-
-      return NextResponse.json(
-        { error: 'Amounts must be valid numbers' },
-        { status: 400 }
+        { error: 'Invalid amount values' },
+        { status: 400, headers: corsHeaders }
       );
     }
 
     const settingsData = {
       type: 'contribution',
-      anaAmount: parseFloat(anaAmount),
-      husbandAmount: parseFloat(husbandAmount),
-      totalBudget: parseFloat(totalBudget) || (parseFloat(anaAmount) + parseFloat(husbandAmount)),
+      anaAmount,
+      husbandAmount,
+      totalBudget,
       updatedAt: new Date()
     };
 
-    try {
-      const db = await getDatabase();
-      await db
-        .collection('expenses-settings')
-        .replaceOne(
-          { type: 'contribution' },
-          settingsData,
-          { upsert: true }
-        );
-      
-      return NextResponse.json({
-        success: true,
-        settings: {
-          anaAmount: settingsData.anaAmount,
-          husbandAmount: settingsData.husbandAmount,
-          totalBudget: settingsData.totalBudget
-        }
-      });
-    } catch (dbError) {
-      console.error('Database operation failed:', dbError);
-      throw dbError;
-    }
+    const db = await getDatabase();
+    await db
+      .collection('settings-data')
+      .updateOne(
+        { type: 'contribution' },
+        { $set: settingsData },
+        { upsert: true }
+      );
 
-  } catch (error) {
-    console.error('POST /api/settings - Error occurred:', error);
-    console.error('Error details:', {
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : 'No stack trace'
-    });
-    
     return NextResponse.json(
-      { error: 'Failed to update settings' },
-      { status: 500 }
+      { success: true, settings: settingsData },
+      { headers: corsHeaders }
+    );
+  } catch (error) {
+    console.error('POST /api/settings - Error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500, headers: corsHeaders }
     );
   }
 }

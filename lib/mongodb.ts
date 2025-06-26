@@ -6,6 +6,19 @@ if (!process.env.MONGODB_URI) {
 
 const uri = process.env.MONGODB_URI;
 
+// Validate MongoDB URI format
+if (!uri.startsWith("mongodb://") && !uri.startsWith("mongodb+srv://")) {
+  throw new Error("Invalid MongoDB URI format");
+}
+
+const options = {
+  maxPoolSize: 10,
+  serverSelectionTimeoutMS: 10000,
+  socketTimeoutMS: 45000,
+  authSource: "admin",
+  ssl: true
+};
+
 let cachedClient: MongoClient | null = null;
 let cachedDb: Db | null = null;
 
@@ -16,22 +29,29 @@ export async function getDatabase(): Promise<Db> {
       await cachedClient.db("admin").command({ ping: 1 });
       return cachedDb;
     } catch (error) {
-      // Reset cache if connection is dead
+      console.warn("Cached connection failed, creating new connection");
       cachedClient = null;
       cachedDb = null;
     }
   }
 
-  // Create new connection
-  const client = new MongoClient(uri);
-  await client.connect();
-  await client.db("admin").command({ ping: 1 });
+  try {
+    const client = new MongoClient(uri, options);
+    await client.connect();
+    await client.db("admin").command({ ping: 1 });
 
-  // Cache the connection
-  cachedClient = client;
-  cachedDb = client.db("expenses-app");
+    cachedClient = client;
+    cachedDb = client.db("expenses-app");
 
-  return cachedDb;
+    return cachedDb;
+  } catch (error) {
+    console.error("Database connection error:", error);
+    throw new Error(
+      `Database connection failed: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
+  }
 }
 
 export async function closeConnection(): Promise<void> {
