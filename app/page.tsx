@@ -85,7 +85,7 @@ export default function Home() {
 
     return expenses.filter((expense) => {
       const expenseDate = expense.date; // Format: DD/MM/YYYY
-      const [, month, year] = expenseDate.split("/"); // Use underscore to ignore day
+      const [, month, year] = expenseDate.split("/"); // Use comma to skip 'day'
       const expenseMonthYear = `${year}-${month.padStart(2, "0")}`;
       return expenseMonthYear === searchMonth;
     });
@@ -109,7 +109,7 @@ export default function Home() {
   // Get available months from expenses
   const getAvailableMonths = () => {
     const months = expenses.map((expense) => {
-      const [day, month, year] = expense.date.split("/");
+      const [, month, year] = expense.date.split("/"); // Use comma to skip 'day'
       return `${year}-${month.padStart(2, "0")}`;
     });
 
