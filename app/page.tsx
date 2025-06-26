@@ -85,7 +85,7 @@ export default function Home() {
 
     return expenses.filter((expense) => {
       const expenseDate = expense.date; // Format: DD/MM/YYYY
-      const [day, month, year] = expenseDate.split("/");
+      const [, month, year] = expenseDate.split("/"); // Use underscore to ignore day
       const expenseMonthYear = `${year}-${month.padStart(2, "0")}`;
       return expenseMonthYear === searchMonth;
     });
