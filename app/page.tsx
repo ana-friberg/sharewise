@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import * as XLSX from "xlsx";
+import HeartAnimation from "../animation/heart_animation";
 
 interface Expense {
   _id?: string;
@@ -43,6 +44,18 @@ export default function Home() {
   const [searchMonth, setSearchMonth] = useState("");
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [showMonthlySearch, setShowMonthlySearch] = useState(false);
+
+  // Add function to get current month expenses
+  const getCurrentMonthExpenses = () => {
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1; // JavaScript months are 0-based
+    const currentYear = now.getFullYear();
+    
+    return expenses.filter((expense) => {
+      const [day, month, year] = expense.date.split("/").map(Number);
+      return month === currentMonth && year === currentYear;
+    });
+  };
 
   // Load data from MongoDB on component mount
   useEffect(() => {
@@ -351,30 +364,33 @@ export default function Home() {
       // Add expenses sheet to workbook
       XLSX.utils.book_append_sheet(workbook, expensesWorksheet, "Expenses");
 
-      // Create summary data
+      // Create summary data using current month data
+      const currentMonthExpenses = getCurrentMonthExpenses();
+      const currentMonthTotals = getMonthlyTotals(currentMonthExpenses);
+      
       const summaryData = [
-        { Category: "Total Expenses", "Amount (₪)": totalExpenses.toFixed(2) },
+        { Category: "Current Month Expenses", "Amount (₪)": currentMonthTotals.monthTotal.toFixed(2) },
         { Category: "Total Budget", "Amount (₪)": totalBudget.toFixed(2) },
         { Category: "", "Amount (₪)": "" }, // Empty row
         {
-          Category: "Ana - Actual Spent",
-          "Amount (₪)": anaActualSpent.toFixed(2),
+          Category: "Ana - Current Month Spent",
+          "Amount (₪)": currentMonthTotals.anaTotal.toFixed(2),
         },
         {
           Category: "Ana - Expected",
           "Amount (₪)": anaExpectedContribution.toFixed(2),
         },
-        { Category: "Ana - Balance", "Amount (₪)": anaBalance.toFixed(2) },
+        { Category: "Ana - Balance", "Amount (₪)": (currentMonthTotals.anaTotal - anaExpectedContribution).toFixed(2) },
         { Category: "", "Amount (₪)": "" }, // Empty row
         {
-          Category: "Eido - Actual Spent",
-          "Amount (₪)": husbandActualSpent.toFixed(2),
+          Category: "Eido - Current Month Spent",
+          "Amount (₪)": currentMonthTotals.eidoTotal.toFixed(2),
         },
         {
           Category: "Eido - Expected",
           "Amount (₪)": husbandExpectedContribution.toFixed(2),
         },
-        { Category: "Eido - Balance", "Amount (₪)": husbandBalance.toFixed(2) },
+        { Category: "Eido - Balance", "Amount (₪)": (currentMonthTotals.eidoTotal - husbandExpectedContribution).toFixed(2) },
         { Category: "", "Amount (₪)": "" }, // Empty row
         {
           Category: "Export Date",
@@ -395,8 +411,8 @@ export default function Home() {
       // Add summary sheet to workbook
       XLSX.utils.book_append_sheet(workbook, summaryWorksheet, "Summary");
 
-      // Create category breakdown data
-      const categoryBreakdown = expenses.reduce((acc, expense) => {
+      // Create category breakdown data for current month
+      const categoryBreakdown = currentMonthExpenses.reduce((acc, expense) => {
         const category = expense.category;
         if (!acc[category]) {
           acc[category] = { total: 0, count: 0, ana: 0, eido: 0 };
@@ -488,17 +504,13 @@ export default function Home() {
     }
   };
 
-  // Calculate summary data
-  const totalExpenses = expenses.reduce(
-    (sum, expense) => sum + expense.amount,
-    0
-  );
-  const anaActualSpent = expenses
-    .filter((e) => e.person === "ana")
-    .reduce((sum, e) => sum + e.amount, 0);
-  const husbandActualSpent = expenses
-    .filter((e) => e.person === "husband")
-    .reduce((sum, e) => sum + e.amount, 0);
+  // Calculate summary data - Updated to use current month only
+  const currentMonthExpenses = getCurrentMonthExpenses();
+  const currentMonthTotals = getMonthlyTotals(currentMonthExpenses);
+  
+  const totalExpenses = currentMonthTotals.monthTotal;
+  const anaActualSpent = currentMonthTotals.anaTotal;
+  const husbandActualSpent = currentMonthTotals.eidoTotal;
 
   // Calculate expected contributions (fixed amounts) with null safety
   const anaExpectedContribution = contributionSettings?.anaAmount || 765;
@@ -515,16 +527,9 @@ export default function Home() {
   const monthlyTotals = getMonthlyTotals(filteredExpenses);
   const availableMonths = getAvailableMonths();
 
-  // Show loading state
+  // Show heart animation while loading
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 p-4 max-w-md mx-auto flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-          <div className="text-gray-500">Loading expenses...</div>
-        </div>
-      </div>
-    );
+    return <HeartAnimation isLoading={isLoading} />;
   }
 
   return (
@@ -581,15 +586,22 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Enhanced Summary Dashboard */}
+      {/* Enhanced Summary Dashboard - Now shows current month only */}
       <div className="space-y-4 mb-4">
+        {/* Current Month Header */}
+        <div className="text-center">
+          <div className="text-sm text-gray-500 mb-2">
+            {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })} Summary
+          </div>
+        </div>
+
         {/* Total Expenses Card */}
         <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
           <div className="text-center">
             <div className="text-2xl font-bold text-blue-600 mb-2">
               ₪{totalExpenses.toFixed(2)}
             </div>
-            <div className="text-sm text-gray-500">Total Expenses</div>
+            <div className="text-sm text-gray-500">Current Month Expenses</div>
             <div className="text-xs text-gray-400 mt-1">
               Budget: ₪{totalBudget.toFixed(2)}
             </div>
@@ -599,7 +611,7 @@ export default function Home() {
         {/* Individual Spending Card */}
         <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
           <h3 className="font-medium text-gray-900 mb-3 text-center">
-            Spending
+            Current Month Spending
           </h3>
           <div className="grid grid-cols-2 gap-4">
             <div className="text-center">
@@ -620,7 +632,7 @@ export default function Home() {
         {/* Detailed Balance Card */}
         <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
           <h3 className="font-medium text-gray-900 mb-3 text-center">
-            Balance Details
+            Current Month Balance
           </h3>
           <div className="space-y-2">
             <div className="flex justify-between items-center">
