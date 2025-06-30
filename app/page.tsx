@@ -52,7 +52,7 @@ export default function Home() {
     const currentYear = now.getFullYear();
     
     return expenses.filter((expense) => {
-      const [day, month, year] = expense.date.split("/").map(Number);
+      const [, month, year] = expense.date.split("/").map(Number);
       return month === currentMonth && year === currentYear;
     });
   };
