@@ -20,33 +20,58 @@ interface ContributionSettings {
   totalBudget: number;
 }
 
+// Add type for expense input validation
+interface ExpenseInput {
+  amount: string;
+  storeName: string;
+  description: string;
+  category: string;
+  person: string;
+}
+
+// Add type for monthly totals
+interface MonthlyTotals {
+  anaTotal: number;
+  eidoTotal: number;
+  monthTotal: number;
+}
+
+// Add type for category breakdown
+interface CategoryBreakdown {
+  [category: string]: {
+    total: number;
+    count: number;
+    ana: number;
+    eido: number;
+  };
+}
+
 export default function Home() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [description, setDescription] = useState("");
-  const [amount, setAmount] = useState("");
-  const [category, setCategory] = useState("groceries");
-  const [person, setPerson] = useState("ana");
-  const [storeName, setStoreName] = useState("");
-  const [showStoreDropdown, setShowStoreDropdown] = useState(false);
+  const [description, setDescription] = useState<string>("");
+  const [amount, setAmount] = useState<string>("");
+  const [category, setCategory] = useState<string>("groceries");
+  const [person, setPerson] = useState<string>("ana");
+  const [storeName, setStoreName] = useState<string>("");
+  const [showStoreDropdown, setShowStoreDropdown] = useState<boolean>(false);
   const [filteredStores, setFilteredStores] = useState<string[]>([]);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
   const [expenseToDelete, setExpenseToDelete] = useState<number | null>(null);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [contributionSettings, setContributionSettings] =
-    useState<ContributionSettings>({
-      anaAmount: 765,
-      husbandAmount: 935,
-      totalBudget: 1700,
-    });
-  const [isLoading, setIsLoading] = useState(true);
+  const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
+  const [contributionSettings, setContributionSettings] = useState<ContributionSettings>({
+    anaAmount: 765,
+    husbandAmount: 935,
+    totalBudget: 1700,
+  });
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Search functionality
-  const [searchMonth, setSearchMonth] = useState("");
-  const [showSearchResults, setShowSearchResults] = useState(false);
-  const [showMonthlySearch, setShowMonthlySearch] = useState(false);
+  const [searchMonth, setSearchMonth] = useState<string>("");
+  const [showSearchResults, setShowSearchResults] = useState<boolean>(false);
+  const [showMonthlySearch, setShowMonthlySearch] = useState<boolean>(false);
 
   // Add function to get current month expenses
-  const getCurrentMonthExpenses = () => {
+  const getCurrentMonthExpenses = (): Expense[] => {
     const now = new Date();
     const currentMonth = now.getMonth() + 1; // JavaScript months are 0-based
     const currentYear = now.getFullYear();
@@ -62,7 +87,7 @@ export default function Home() {
     loadData();
   }, []);
 
-  const loadData = async () => {
+  const loadData = async (): Promise<void> => {
     try {
       setIsLoading(true);
 
@@ -84,6 +109,7 @@ export default function Home() {
         }
       } catch (settingsError) {
         // Keep the default settings already set in state
+        console.error("Error loading settings:", settingsError);
       }
     } catch (error) {
       console.error("Error loading data:", error);
@@ -93,7 +119,7 @@ export default function Home() {
   };
 
   // Filter expenses by selected month
-  const getFilteredExpenses = () => {
+  const getFilteredExpenses = (): Expense[] => {
     if (!searchMonth) return expenses;
 
     return expenses.filter((expense) => {
@@ -105,7 +131,7 @@ export default function Home() {
   };
 
   // Calculate monthly totals
-  const getMonthlyTotals = (filteredExpenses: Expense[]) => {
+  const getMonthlyTotals = (filteredExpenses: Expense[]): MonthlyTotals => {
     const anaTotal = filteredExpenses
       .filter((e) => e.person === "ana")
       .reduce((sum, e) => sum + e.amount, 0);
@@ -120,7 +146,7 @@ export default function Home() {
   };
 
   // Get available months from expenses
-  const getAvailableMonths = () => {
+  const getAvailableMonths = (): string[] => {
     const months = expenses.map((expense) => {
       const [, month, year] = expense.date.split("/"); // Use comma to skip 'day'
       return `${year}-${month.padStart(2, "0")}`;
@@ -131,7 +157,7 @@ export default function Home() {
   };
 
   // Format month for display
-  const formatMonthDisplay = (monthValue: string) => {
+  const formatMonthDisplay = (monthValue: string): string => {
     if (!monthValue) return "";
     const [year, month] = monthValue.split("-");
     const date = new Date(parseInt(year), parseInt(month) - 1);
@@ -159,8 +185,8 @@ export default function Home() {
     }
   }, [storeName, expenses]);
 
-  // Add this validation function at the top of your component:
-  const validateExpenseInput = (data: any) => {
+  // Update the validation function
+  const validateExpenseInput = (data: ExpenseInput): string[] => {
     const errors: string[] = [];
 
     // Validate amount
@@ -183,17 +209,12 @@ export default function Home() {
       errors.push("Description cannot exceed 500 characters");
     }
 
-    // Validate category
+    // Validate category - Updated list
     const validCategories = [
       "groceries",
-      "food",
-      "bills",
-      "entertainment",
-      "transport",
-      "shopping",
-      "utilities",
-      "healthcare",
-      "other",
+      "bakery",
+      "pharm",
+      "other"
     ];
     if (!validCategories.includes(data.category)) {
       errors.push("Invalid category");
@@ -208,12 +229,12 @@ export default function Home() {
     return errors;
   };
 
-  const addExpense = async (e: React.FormEvent) => {
+  const addExpense = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
     if (!amount || !storeName) return;
 
     try {
-      const inputData = { amount, storeName, description, category, person };
+      const inputData: ExpenseInput = { amount, storeName, description, category, person };
       const validationErrors = validateExpenseInput(inputData);
 
       if (validationErrors.length > 0) {
@@ -263,12 +284,12 @@ export default function Home() {
     }
   };
 
-  const handleDeleteClick = (id: number) => {
+  const handleDeleteClick = (id: number): void => {
     setExpenseToDelete(id);
     setShowDeleteModal(true);
   };
 
-  const confirmDelete = async () => {
+  const confirmDelete = async (): Promise<void> => {
     if (!expenseToDelete) return;
 
     try {
@@ -291,12 +312,12 @@ export default function Home() {
     }
   };
 
-  const cancelDelete = () => {
+  const cancelDelete = (): void => {
     setShowDeleteModal(false);
     setExpenseToDelete(null);
   };
 
-  const handleStoreSelect = (store: string) => {
+  const handleStoreSelect = (store: string): void => {
     setStoreName(store);
     setShowStoreDropdown(false);
   };
@@ -304,9 +325,9 @@ export default function Home() {
   const updateContributionSettings = async (
     anaAmount: number,
     husbandAmount: number
-  ) => {
+  ): Promise<void> => {
     try {
-      const newSettings = {
+      const newSettings: ContributionSettings = {
         anaAmount: anaAmount,
         husbandAmount: husbandAmount,
         totalBudget: anaAmount + husbandAmount,
@@ -332,7 +353,7 @@ export default function Home() {
   };
 
   // Export data functionality - Updated to export as Excel
-  const exportData = async () => {
+  const exportData = async (): Promise<void> => {
     try {
       // Create a new workbook
       const workbook = XLSX.utils.book_new();
@@ -412,7 +433,7 @@ export default function Home() {
       XLSX.utils.book_append_sheet(workbook, summaryWorksheet, "Summary");
 
       // Create category breakdown data for current month
-      const categoryBreakdown = currentMonthExpenses.reduce((acc, expense) => {
+      const categoryBreakdown: CategoryBreakdown = currentMonthExpenses.reduce((acc, expense) => {
         const category = expense.category;
         if (!acc[category]) {
           acc[category] = { total: 0, count: 0, ana: 0, eido: 0 };
@@ -425,7 +446,7 @@ export default function Home() {
           acc[category].eido += expense.amount;
         }
         return acc;
-      }, {} as Record<string, { total: number; count: number; ana: number; eido: number }>);
+      }, {} as CategoryBreakdown);
 
       const categoryData = Object.entries(categoryBreakdown).map(
         ([category, data]) => ({
@@ -469,7 +490,7 @@ export default function Home() {
   };
 
   // Clear all data functionality
-  const clearAllData = async () => {
+  const clearAllData = async (): Promise<void> => {
     if (
       !confirm(
         "Are you sure you want to clear all data? This action cannot be undone."
@@ -495,7 +516,7 @@ export default function Home() {
   };
 
   // Handle search button click
-  const handleSearchClick = () => {
+  const handleSearchClick = (): void => {
     setShowMonthlySearch(!showMonthlySearch);
     // If hiding search, also clear any active search
     if (showMonthlySearch) {
@@ -508,24 +529,24 @@ export default function Home() {
   const currentMonthExpenses = getCurrentMonthExpenses();
   const currentMonthTotals = getMonthlyTotals(currentMonthExpenses);
   
-  const totalExpenses = currentMonthTotals.monthTotal;
-  const anaActualSpent = currentMonthTotals.anaTotal;
-  const husbandActualSpent = currentMonthTotals.eidoTotal;
+  const totalExpenses: number = currentMonthTotals.monthTotal;
+  const anaActualSpent: number = currentMonthTotals.anaTotal;
+  const husbandActualSpent: number = currentMonthTotals.eidoTotal;
 
   // Calculate expected contributions (fixed amounts) with null safety
-  const anaExpectedContribution = contributionSettings?.anaAmount || 765;
-  const husbandExpectedContribution =
+  const anaExpectedContribution: number = contributionSettings?.anaAmount || 765;
+  const husbandExpectedContribution: number =
     contributionSettings?.husbandAmount || 935;
-  const totalBudget = contributionSettings?.totalBudget || 1700;
+  const totalBudget: number = contributionSettings?.totalBudget || 1700;
 
   // Calculate who owes whom
-  const anaBalance = anaActualSpent - anaExpectedContribution;
-  const husbandBalance = husbandActualSpent - husbandExpectedContribution;
+  const anaBalance: number = anaActualSpent - anaExpectedContribution;
+  const husbandBalance: number = husbandActualSpent - husbandExpectedContribution;
 
   // Get filtered expenses and monthly totals for display
-  const filteredExpenses = getFilteredExpenses();
-  const monthlyTotals = getMonthlyTotals(filteredExpenses);
-  const availableMonths = getAvailableMonths();
+  const filteredExpenses: Expense[] = getFilteredExpenses();
+  const monthlyTotals: MonthlyTotals = getMonthlyTotals(filteredExpenses);
+  const availableMonths: string[] = getAvailableMonths();
 
   // Show heart animation while loading
   if (isLoading) {
@@ -682,13 +703,8 @@ export default function Home() {
             className="w-full p-3 border border-gray-200 rounded-lg text-base bg-gray-50 focus:bg-white focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-colors appearance-none"
           >
             <option value="groceries">🛒 Groceries</option>
-            <option value="food">🍕 Food</option>
-            <option value="bills">💡 Bills</option>
-            <option value="entertainment">🎬 Entertainment</option>
-            <option value="transport">🚗 Transport</option>
-            <option value="shopping">🛍️ Shopping</option>
-            <option value="utilities">🏠 Utilities</option>
-            <option value="healthcare">⚕️ Healthcare</option>
+            <option value="bakery">🥖 Bakery</option>
+            <option value="pharm">💊 Pharmacy</option>
             <option value="other">📝 Other</option>
           </select>
 
