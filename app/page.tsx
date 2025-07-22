@@ -136,24 +136,25 @@ export default function Home() {
     
     if (searchMonth) {
       filtered = expenses.filter((expense) => {
-        const expenseDate = expense.date;
-        const [, month, year] = expenseDate.split("/");
+        const expenseDate = expense.date; // Format: DD/MM/YYYY
+        const [, month, year] = expenseDate.split("/"); // Use comma to skip 'day'
         const expenseMonthYear = `${year}-${month.padStart(2, "0")}`;
         return expenseMonthYear === searchMonth;
       });
     }
 
-    // Sort by date (most recent first), then by ID within same date
+    // Sort by date (most recent first) - Enhanced sorting
     return filtered.sort((a, b) => {
       const dateA = parseDate(a.date);
       const dateB = parseDate(b.date);
       
+      // Primary sort: by date (newest first)
       const dateDiff = dateB.getTime() - dateA.getTime();
       if (dateDiff !== 0) {
         return dateDiff;
       }
       
-      // If same date, sort by ID (newer first)
+      // Secondary sort: by expense ID (newer entries first if same date)
       return b.id - a.id;
     });
   };
