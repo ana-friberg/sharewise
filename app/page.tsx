@@ -661,13 +661,13 @@ export default function Home() {
           </h3>
           <div className="grid grid-cols-2 gap-4">
             <div className="text-center">
-              <div className="text-lg font-semibold text-green-600">
+              <div className="text-lg font-semibold text-black-600">
                 ₪{anaActualSpent.toFixed(2)}
               </div>
               <div className="text-xs text-gray-500">Ana</div>
             </div>
             <div className="text-center">
-              <div className="text-lg font-semibold text-purple-600">
+              <div className="text-lg font-semibold text-black-600">
                 ₪{husbandActualSpent.toFixed(2)}
               </div>
               <div className="text-xs text-gray-500">Eido</div>
@@ -687,10 +687,12 @@ export default function Home() {
               </span>
               <span
                 className={`text-sm font-medium ${
-                  anaBalance >= 0 ? "text-green-600" : "text-red-600"
+                  anaBalance <= 0 ? "text-green-600" : "text-red-600"
                 }`}
               >
-                {anaBalance >= 0 ? "+" : ""}₪{anaBalance.toFixed(2)}
+                {anaBalance <= 0
+                  ? `₪${Math.abs(anaBalance).toFixed(2)}`
+                  : `-₪${Math.abs(anaBalance).toFixed(2)}`}
               </span>
             </div>
             <div className="flex justify-between items-center">
@@ -699,10 +701,12 @@ export default function Home() {
               </span>
               <span
                 className={`text-sm font-medium ${
-                  husbandBalance >= 0 ? "text-green-600" : "text-red-600"
+                  husbandBalance <= 0 ? "text-green-600" : "text-red-600"
                 }`}
               >
-                {husbandBalance >= 0 ? "+" : ""}₪{husbandBalance.toFixed(2)}
+                {husbandBalance <= 0
+                  ? `₪${Math.abs(husbandBalance).toFixed(2)}`
+                  : `-₪${Math.abs(husbandBalance).toFixed(2)}`}
               </span>
             </div>
           </div>
