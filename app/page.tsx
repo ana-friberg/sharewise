@@ -118,17 +118,6 @@ export default function Home() {
     }
   };
 
-  // Helper function to group expenses by date
-  const groupExpensesByDate = (expenses: Expense[]): { [date: string]: Expense[] } => {
-    return expenses.reduce((groups, expense) => {
-      const date = expense.date;
-      if (!groups[date]) {
-        groups[date] = [];
-      }
-      groups[date].push(expense);
-      return groups;
-    }, {} as { [date: string]: Expense[] });
-  };
 
   // Filter expenses by selected month and sort by date
   const getFilteredExpenses = (): Expense[] => {
