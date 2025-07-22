@@ -118,16 +118,51 @@ export default function Home() {
     }
   };
 
-  // Filter expenses by selected month
-  const getFilteredExpenses = (): Expense[] => {
-    if (!searchMonth) return expenses;
+  // Helper function to group expenses by date
+  const groupExpensesByDate = (expenses: Expense[]): { [date: string]: Expense[] } => {
+    return expenses.reduce((groups, expense) => {
+      const date = expense.date;
+      if (!groups[date]) {
+        groups[date] = [];
+      }
+      groups[date].push(expense);
+      return groups;
+    }, {} as { [date: string]: Expense[] });
+  };
 
-    return expenses.filter((expense) => {
-      const expenseDate = expense.date; // Format: DD/MM/YYYY
-      const [, month, year] = expenseDate.split("/"); // Use comma to skip 'day'
-      const expenseMonthYear = `${year}-${month.padStart(2, "0")}`;
-      return expenseMonthYear === searchMonth;
+  // Filter expenses by selected month and sort by date
+  const getFilteredExpenses = (): Expense[] => {
+    let filtered = expenses;
+    
+    if (searchMonth) {
+      filtered = expenses.filter((expense) => {
+        const expenseDate = expense.date;
+        const [, month, year] = expenseDate.split("/");
+        const expenseMonthYear = `${year}-${month.padStart(2, "0")}`;
+        return expenseMonthYear === searchMonth;
+      });
+    }
+
+    // Sort by date (most recent first), then by ID within same date
+    return filtered.sort((a, b) => {
+      const dateA = parseDate(a.date);
+      const dateB = parseDate(b.date);
+      
+      const dateDiff = dateB.getTime() - dateA.getTime();
+      if (dateDiff !== 0) {
+        return dateDiff;
+      }
+      
+      // If same date, sort by ID (newer first)
+      return b.id - a.id;
     });
+  };
+
+  // Enhanced helper function to parse DD/MM/YYYY format to Date object
+  const parseDate = (dateString: string): Date => {
+    const [day, month, year] = dateString.split("/").map(Number);
+    // Create date at noon to avoid timezone issues
+    return new Date(year, month - 1, day, 12, 0, 0, 0);
   };
 
   // Calculate monthly totals
