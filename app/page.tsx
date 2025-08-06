@@ -92,7 +92,7 @@ export default function Home() {
     loadData();
   }, []);
 
-  // Load person preference from cookies on component mount
+  // Load person preference from cookies
   useEffect(() => {
     const savedPerson = Cookies.get("selectedPerson");
     if (savedPerson && (savedPerson === "ana" || savedPerson === "husband")) {
