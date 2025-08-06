@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import * as XLSX from "xlsx";
+import Cookies from "js-cookie";
 import HeartAnimation from "../animation/heart_animation";
 
 interface Expense {
@@ -51,7 +52,11 @@ export default function Home() {
   const [description, setDescription] = useState<string>("");
   const [amount, setAmount] = useState<string>("");
   const [category, setCategory] = useState<string>("groceries");
-  const [person, setPerson] = useState<string>("ana");
+  const [person, setPerson] = useState<string>(() => {
+    // Load person preference from cookies, default to "ana" if not found
+    const savedPerson = Cookies.get("selectedPerson");
+    return (savedPerson === "ana" || savedPerson === "husband") ? savedPerson : "ana";
+  });
   const [storeName, setStoreName] = useState<string>("");
   const [showStoreDropdown, setShowStoreDropdown] = useState<boolean>(false);
   const [filteredStores, setFilteredStores] = useState<string[]>([]);
@@ -85,6 +90,18 @@ export default function Home() {
   // Load data from MongoDB on component mount
   useEffect(() => {
     loadData();
+  }, []);
+
+  // Load person preference from cookies on component mount
+  useEffect(() => {
+    const savedPerson = Cookies.get("selectedPerson");
+    if (savedPerson && (savedPerson === "ana" || savedPerson === "husband")) {
+      setPerson(savedPerson);
+    } else {
+      // If no valid cookie exists, set default to "ana" and save it
+      setPerson("ana");
+      Cookies.set("selectedPerson", "ana", { expires: 365 });
+    }
   }, []);
 
   const loadData = async (): Promise<void> => {
@@ -345,6 +362,13 @@ export default function Home() {
   const handleStoreSelect = (store: string): void => {
     setStoreName(store);
     setShowStoreDropdown(false);
+  };
+
+  // Function to handle person selection and save to cookies
+  const handlePersonChange = (selectedPerson: string): void => {
+    setPerson(selectedPerson);
+    // Save to cookies with 365 days expiration
+    Cookies.set("selectedPerson", selectedPerson, { expires: 365 });
   };
 
   const updateContributionSettings = async (
@@ -739,7 +763,7 @@ export default function Home() {
 
           <select
             value={person}
-            onChange={(e) => setPerson(e.target.value)}
+            onChange={(e) => handlePersonChange(e.target.value)}
             className="w-full p-3 border border-gray-200 rounded-lg text-base bg-gray-50 focus:bg-white focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-colors appearance-none"
           >
             <option value="ana">👩 Ana</option>
