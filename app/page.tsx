@@ -1,8 +1,13 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import Cookies from "js-cookie";
 import HeartAnimation from "../animation/heart_animation";
+import Header from "../components/Header";
+import SummaryDashboard from "../components/SummaryDashboard";
+import ExpenseForm from "../components/ExpenseForm";
+import ExpensesList from "../components/ExpensesList";
+import Modals from "../components/Modals";
 
 interface Expense {
   _id?: string;
@@ -15,10 +20,8 @@ interface Expense {
   date: string;
 }
 
-interface ContributionSettings {
-  anaAmount: number;
-  husbandAmount: number;
-  totalBudget: number;
+interface SharedAccountSettings {
+  sharedAccountBalance: number;
 }
 
 // Add type for expense input validation
@@ -55,7 +58,9 @@ export default function Home() {
   const [person, setPerson] = useState<string>(() => {
     // Load person preference from cookies, default to "ana" if not found
     const savedPerson = Cookies.get("selectedPerson");
-    return (savedPerson === "ana" || savedPerson === "husband") ? savedPerson : "ana";
+    return savedPerson === "ana" || savedPerson === "husband"
+      ? savedPerson
+      : "ana";
   });
   const [storeName, setStoreName] = useState<string>("");
   const [showStoreDropdown, setShowStoreDropdown] = useState<boolean>(false);
@@ -63,11 +68,10 @@ export default function Home() {
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
   const [expenseToDelete, setExpenseToDelete] = useState<number | null>(null);
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
-  const [contributionSettings, setContributionSettings] = useState<ContributionSettings>({
-    anaAmount: 765,
-    husbandAmount: 935,
-    totalBudget: 1700,
-  });
+  const [sharedAccountSettings, setSharedAccountSettings] =
+    useState<SharedAccountSettings>({
+      sharedAccountBalance: 1000,
+    });
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Search functionality
@@ -75,12 +79,30 @@ export default function Home() {
   const [showSearchResults, setShowSearchResults] = useState<boolean>(false);
   const [showMonthlySearch, setShowMonthlySearch] = useState<boolean>(false);
 
+  // Conversion table management
+  const [showConversionTable, setShowConversionTable] = useState<boolean>(false);
+  const [conversionEntries, setConversionEntries] = useState<any[]>([]);
+  const [newConversionEntry, setNewConversionEntry] = useState({
+    id_name: "",
+    store_name: "",
+    category: "groceries",
+    comment: ""
+  });
+  const [conversionMessage, setConversionMessage] = useState<string>("");
+
+  // Receipt processing loading state
+  const [isProcessingReceipt, setIsProcessingReceipt] = useState<boolean>(false);
+
+  // Infinite scroll state for recent expenses
+  const [displayedMonthsCount, setDisplayedMonthsCount] = useState<number>(1);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+
   // Add function to get current month expenses
   const getCurrentMonthExpenses = (): Expense[] => {
     const now = new Date();
     const currentMonth = now.getMonth() + 1; // JavaScript months are 0-based
     const currentYear = now.getFullYear();
-    
+
     return expenses.filter((expense) => {
       const [, month, year] = expense.date.split("/").map(Number);
       return month === currentMonth && year === currentYear;
@@ -115,13 +137,18 @@ export default function Home() {
         setExpenses(expensesData.expenses || []);
       }
 
-      // Load contribution settings
+      // Load shared account settings
       try {
         const settingsResponse = await fetch("/api/settings");
         if (settingsResponse.ok) {
           const settingsData = await settingsResponse.json();
-          if (settingsData.settings) {
-            setContributionSettings(settingsData.settings);
+          if (
+            settingsData.settings &&
+            settingsData.settings.sharedAccountBalance !== undefined
+          ) {
+            setSharedAccountSettings({
+              sharedAccountBalance: settingsData.settings.sharedAccountBalance,
+            });
           }
         }
       } catch (settingsError) {
@@ -134,18 +161,29 @@ export default function Home() {
       setIsLoading(false);
     }
   };
-
-
+  
   // Filter expenses by selected month and sort by date
   const getFilteredExpenses = (): Expense[] => {
     let filtered = expenses;
-    
+
     if (searchMonth) {
+      // If searching for a specific month, show only that month
       filtered = expenses.filter((expense) => {
         const expenseDate = expense.date; // Format: DD/MM/YYYY
         const [, month, year] = expenseDate.split("/"); // Use comma to skip 'day'
         const expenseMonthYear = `${year}-${month.padStart(2, "0")}`;
         return expenseMonthYear === searchMonth;
+      });
+    } else {
+      // For "Recent Expenses", show current month + previous months based on displayedMonthsCount
+      const availableMonthsList = getAvailableMonthsList();
+      const monthsToShow = availableMonthsList.slice(0, displayedMonthsCount);
+      
+      filtered = expenses.filter((expense) => {
+        const expenseDate = expense.date; // Format: DD/MM/YYYY
+        const [, month, year] = expenseDate.split("/");
+        const expenseMonthYear = `${year}-${month.padStart(2, "0")}`;
+        return monthsToShow.includes(expenseMonthYear);
       });
     }
 
@@ -153,13 +191,13 @@ export default function Home() {
     return filtered.sort((a, b) => {
       const dateA = parseDate(a.date);
       const dateB = parseDate(b.date);
-      
+
       // Primary sort: by date (newest first)
       const dateDiff = dateB.getTime() - dateA.getTime();
       if (dateDiff !== 0) {
         return dateDiff;
       }
-      
+
       // Secondary sort: by expense ID (newer entries first if same date)
       return b.id - a.id;
     });
@@ -187,8 +225,8 @@ export default function Home() {
     return { anaTotal, eidoTotal, monthTotal };
   };
 
-  // Get available months from expenses
-  const getAvailableMonths = (): string[] => {
+  // Get available months from expenses (sorted from newest to oldest)
+  const getAvailableMonthsList = (): string[] => {
     const months = expenses.map((expense) => {
       const [, month, year] = expense.date.split("/"); // Use comma to skip 'day'
       return `${year}-${month.padStart(2, "0")}`;
@@ -196,6 +234,27 @@ export default function Home() {
 
     const uniqueMonths = [...new Set(months)].sort().reverse();
     return uniqueMonths;
+  };
+
+  // Get available months from expenses
+  const getAvailableMonths = (): string[] => {
+    return getAvailableMonthsList();
+  };
+
+  // Load more months for infinite scroll
+  const loadMoreMonths = async (): Promise<void> => {
+    const availableMonthsList = getAvailableMonthsList();
+    if (displayedMonthsCount >= availableMonthsList.length) {
+      return; // No more months to load
+    }
+
+    setIsLoadingMore(true);
+    
+    // Simulate a brief loading delay for better UX
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    setDisplayedMonthsCount(prev => prev + 1);
+    setIsLoadingMore(false);
   };
 
   // Format month for display
@@ -256,7 +315,25 @@ export default function Home() {
       "groceries",
       "bakery",
       "pharm",
-      "other"
+      "clothing",
+      "apartment",
+      "electricity",
+      "water",
+      "gas",
+      "internet",
+      "transport",
+      "travel",
+      "mobile",
+      "electronics",
+      "subscriptions",
+      "restaurant",
+      "entertainment",
+      "health",
+      "education",
+      "insurance",
+      "beauty",
+      "gifts",
+      "other",
     ];
     if (!validCategories.includes(data.category)) {
       errors.push("Invalid category");
@@ -271,12 +348,122 @@ export default function Home() {
     return errors;
   };
 
-  const addExpense = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Handle receipt processing result
+  const handleReceiptProcessed = async (data: {
+    storeName: string;
+    totalAmount: number;
+  }) => {
+    try {
+      // First, check the conversion table for this store name
+      const conversionResponse = await fetch(`/api/conversion?id_name=${encodeURIComponent(data.storeName.toLowerCase())}`);
+      
+      if (conversionResponse.ok) {
+        const conversionResult = await conversionResponse.json();
+        
+        if (conversionResult.success && conversionResult.entry) {
+          // Found in conversion table - use predefined values
+          const entry = conversionResult.entry;
+          setStoreName(entry.store_name);
+          setAmount(data.totalAmount.toString());
+          setCategory(entry.category);
+          setDescription(entry.comment || "Added from receipt scan (auto-converted)");
+          
+          console.log("Store converted using conversion table:", {
+            original: data.storeName,
+            converted: entry.store_name,
+            category: entry.category
+          });
+        } else {
+          // Not found in conversion table - use original AI results
+          setStoreName(data.storeName);
+          setAmount(data.totalAmount.toString());
+          setDescription("Added from receipt scan");
+        }
+      } else {
+        // Error accessing conversion table - use original AI results
+        console.warn("Failed to access conversion table, using original store name");
+        setStoreName(data.storeName);
+        setAmount(data.totalAmount.toString());
+        setDescription("Added from receipt scan");
+      }
+    } catch (error) {
+      console.error("Error checking conversion table:", error);
+      // Fallback to original AI results
+      setStoreName(data.storeName);
+      setAmount(data.totalAmount.toString());
+      setDescription("Added from receipt scan");
+    }
+  };
+
+  const convertToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  const handleCameraCapture = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileSelect = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsProcessingReceipt(true); // Start loading
+
+      // Convert to base64
+      const base64Image = await convertToBase64(file);
+
+      // Send to API
+      const response = await fetch("/api/receipt", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          image: base64Image,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        await handleReceiptProcessed(result.data);
+      } else {
+        alert("Failed to process receipt. Please try manual entry.");
+      }
+    } catch (error) {
+      console.error("Error processing receipt:", error);
+      alert("Error processing receipt. Please try manual entry.");
+    } finally {
+      setIsProcessingReceipt(false); // Stop loading
+    }
+  };
+
+  const addExpense = async (
+    e: React.FormEvent<HTMLFormElement>
+  ): Promise<void> => {
     e.preventDefault();
     if (!amount || !storeName) return;
 
     try {
-      const inputData: ExpenseInput = { amount, storeName, description, category, person };
+      const inputData: ExpenseInput = {
+        amount,
+        storeName,
+        description,
+        category,
+        person,
+      };
       const validationErrors = validateExpenseInput(inputData);
 
       if (validationErrors.length > 0) {
@@ -317,6 +504,11 @@ export default function Home() {
         setAmount("");
         setStoreName("");
         setShowStoreDropdown(false);
+        
+        // Reset to current month view to show the new expense
+        setDisplayedMonthsCount(1);
+        setSearchMonth("");
+        setShowSearchResults(false);
       } else {
         console.error("Failed to add expense");
       }
@@ -371,15 +563,12 @@ export default function Home() {
     Cookies.set("selectedPerson", selectedPerson, { expires: 365 });
   };
 
-  const updateContributionSettings = async (
-    anaAmount: number,
-    husbandAmount: number
+  const updateSharedAccountSettings = async (
+    sharedAccountBalance: number
   ): Promise<void> => {
     try {
-      const newSettings: ContributionSettings = {
-        anaAmount: anaAmount,
-        husbandAmount: husbandAmount,
-        totalBudget: anaAmount + husbandAmount,
+      const newSettings: SharedAccountSettings = {
+        sharedAccountBalance: sharedAccountBalance,
       };
 
       const response = await fetch("/api/settings", {
@@ -391,13 +580,70 @@ export default function Home() {
       });
 
       if (response.ok) {
-        setContributionSettings(newSettings);
+        setSharedAccountSettings(newSettings);
         setShowSettingsModal(false);
       } else {
         console.error("Failed to update settings");
       }
     } catch (error) {
       console.error("Error updating settings:", error);
+    }
+  };
+
+  // Conversion table management functions
+  const loadConversionEntries = async (): Promise<void> => {
+    try {
+      const response = await fetch("/api/conversion");
+      if (response.ok) {
+        const data = await response.json();
+        setConversionEntries(data.entries || []);
+      }
+    } catch (error) {
+      console.error("Error loading conversion entries:", error);
+    }
+  };
+
+  const addConversionEntry = async (): Promise<void> => {
+    if (!newConversionEntry.id_name || !newConversionEntry.store_name || !newConversionEntry.category) {
+      setConversionMessage("Please fill in all required fields (ID Name, Store Name, Category)");
+      // Clear message after 3 seconds
+      setTimeout(() => setConversionMessage(""), 3000);
+      return;
+    }
+
+    try {
+      setConversionMessage(""); // Clear any previous messages
+      
+      const response = await fetch("/api/conversion", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(newConversionEntry),
+      });
+
+      if (response.ok) {
+        await loadConversionEntries();
+        setNewConversionEntry({
+          id_name: "",
+          store_name: "",
+          category: "groceries",
+          comment: ""
+        });
+        setConversionMessage("Entry added successfully!");
+        // Clear success message after 3 seconds
+        setTimeout(() => setConversionMessage(""), 3000);
+      } else {
+        const errorData = await response.json();
+        setConversionMessage(`Failed to add entry: ${errorData.error || 'Unknown error'}`);
+        // Clear error message after 5 seconds
+        setTimeout(() => setConversionMessage(""), 5000);
+      }
+    } catch (error) {
+      console.error("Error adding conversion entry:", error);
+      setConversionMessage("Error adding entry. Please try again.");
+      // Clear error message after 5 seconds
+      setTimeout(() => setConversionMessage(""), 5000);
     }
   };
 
@@ -437,30 +683,33 @@ export default function Home() {
       // Create summary data using current month data
       const currentMonthExpenses = getCurrentMonthExpenses();
       const currentMonthTotals = getMonthlyTotals(currentMonthExpenses);
-      
+
       const summaryData = [
-        { Category: "Current Month Expenses", "Amount (₪)": currentMonthTotals.monthTotal.toFixed(2) },
-        { Category: "Total Budget", "Amount (₪)": totalBudget.toFixed(2) },
+        {
+          Category: "Current Month Expenses",
+          "Amount (₪)": currentMonthTotals.monthTotal.toFixed(2),
+        },
+        {
+          Category: "Shared Account Balance",
+          "Amount (₪)": sharedAccountSettings.sharedAccountBalance.toFixed(2),
+        },
         { Category: "", "Amount (₪)": "" }, // Empty row
         {
           Category: "Ana - Current Month Spent",
           "Amount (₪)": currentMonthTotals.anaTotal.toFixed(2),
         },
         {
-          Category: "Ana - Expected",
-          "Amount (₪)": anaExpectedContribution.toFixed(2),
-        },
-        { Category: "Ana - Balance", "Amount (₪)": (currentMonthTotals.anaTotal - anaExpectedContribution).toFixed(2) },
-        { Category: "", "Amount (₪)": "" }, // Empty row
-        {
           Category: "Eido - Current Month Spent",
           "Amount (₪)": currentMonthTotals.eidoTotal.toFixed(2),
         },
+        { Category: "", "Amount (₪)": "" }, // Empty row
         {
-          Category: "Eido - Expected",
-          "Amount (₪)": husbandExpectedContribution.toFixed(2),
+          Category: "Remaining Balance",
+          "Amount (₪)": (
+            sharedAccountSettings.sharedAccountBalance -
+            currentMonthTotals.monthTotal
+          ).toFixed(2),
         },
-        { Category: "Eido - Balance", "Amount (₪)": (currentMonthTotals.eidoTotal - husbandExpectedContribution).toFixed(2) },
         { Category: "", "Amount (₪)": "" }, // Empty row
         {
           Category: "Export Date",
@@ -482,20 +731,23 @@ export default function Home() {
       XLSX.utils.book_append_sheet(workbook, summaryWorksheet, "Summary");
 
       // Create category breakdown data for current month
-      const categoryBreakdown: CategoryBreakdown = currentMonthExpenses.reduce((acc, expense) => {
-        const category = expense.category;
-        if (!acc[category]) {
-          acc[category] = { total: 0, count: 0, ana: 0, eido: 0 };
-        }
-        acc[category].total += expense.amount;
-        acc[category].count += 1;
-        if (expense.person === "ana") {
-          acc[category].ana += expense.amount;
-        } else {
-          acc[category].eido += expense.amount;
-        }
-        return acc;
-      }, {} as CategoryBreakdown);
+      const categoryBreakdown: CategoryBreakdown = currentMonthExpenses.reduce(
+        (acc, expense) => {
+          const category = expense.category;
+          if (!acc[category]) {
+            acc[category] = { total: 0, count: 0, ana: 0, eido: 0 };
+          }
+          acc[category].total += expense.amount;
+          acc[category].count += 1;
+          if (expense.person === "ana") {
+            acc[category].ana += expense.amount;
+          } else {
+            acc[category].eido += expense.amount;
+          }
+          return acc;
+        },
+        {} as CategoryBreakdown
+      );
 
       const categoryData = Object.entries(categoryBreakdown).map(
         ([category, data]) => ({
@@ -556,7 +808,7 @@ export default function Home() {
       await Promise.all(deletePromises);
 
       // Reset settings to default
-      await updateContributionSettings(765, 935);
+      await updateSharedAccountSettings(1000);
 
       setExpenses([]);
     } catch (error) {
@@ -571,31 +823,26 @@ export default function Home() {
     if (showMonthlySearch) {
       setSearchMonth("");
       setShowSearchResults(false);
+      // Reset to current month when exiting search
+      setDisplayedMonthsCount(1);
     }
   };
 
-  // Calculate summary data - Updated to use current month only
+  // Calculate summary data - Updated for shared account logic
   const currentMonthExpenses = getCurrentMonthExpenses();
   const currentMonthTotals = getMonthlyTotals(currentMonthExpenses);
-  
-  const totalExpenses: number = currentMonthTotals.monthTotal;
+
+  const totalMonthlySpending: number = currentMonthTotals.monthTotal;
   const anaActualSpent: number = currentMonthTotals.anaTotal;
   const husbandActualSpent: number = currentMonthTotals.eidoTotal;
-
-  // Calculate expected contributions (fixed amounts) with null safety
-  const anaExpectedContribution: number = contributionSettings?.anaAmount || 765;
-  const husbandExpectedContribution: number =
-    contributionSettings?.husbandAmount || 935;
-  const totalBudget: number = contributionSettings?.totalBudget || 1700;
-
-  // Calculate who owes whom
-  const anaBalance: number = anaActualSpent - anaExpectedContribution;
-  const husbandBalance: number = husbandActualSpent - husbandExpectedContribution;
 
   // Get filtered expenses and monthly totals for display
   const filteredExpenses: Expense[] = getFilteredExpenses();
   const monthlyTotals: MonthlyTotals = getMonthlyTotals(filteredExpenses);
   const availableMonths: string[] = getAvailableMonths();
+  
+  // Check if there are more months to load
+  const hasMoreMonths = displayedMonthsCount < getAvailableMonthsList().length;
 
   // Show heart animation while loading
   if (isLoading) {
@@ -604,570 +851,85 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 max-w-md mx-auto">
-      {/* Header */}
-      <div className="text-center mb-6 relative">
-        <h1 className="text-2xl font-semibold text-gray-900">Expenses</h1>
-        <div className="absolute right-0 top-0 flex gap-2">
-          <button
-            onClick={exportData}
-            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-            aria-label="Export Data"
-            title="Export Data"
-          >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-              />
-            </svg>
-          </button>
-          <button
-            onClick={() => setShowSettingsModal(true)}
-            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-            aria-label="Settings"
-          >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-              />
-            </svg>
-          </button>
-        </div>
-      </div>
+      {/* Hidden file input for camera */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleFileSelect}
+        className="hidden"
+      />
 
-      {/* Enhanced Summary Dashboard - Now shows current month only */}
-      <div className="space-y-4 mb-4">
-        {/* Current Month Header */}
-        <div className="text-center">
-          <div className="text-sm text-gray-500 mb-2">
-            {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })} Summary
-          </div>
-        </div>
+      <Header 
+        exportData={exportData}
+        setShowSettingsModal={setShowSettingsModal}
+      />
 
-        {/* Total Expenses Card */}
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-blue-600 mb-2">
-              ₪{totalExpenses.toFixed(2)}
-            </div>
-            <div className="text-sm text-gray-500">Current Month Expenses</div>
-            <div className="text-xs text-gray-400 mt-1">
-              Budget: ₪{totalBudget.toFixed(2)}
-            </div>
-          </div>
-        </div>
+      <SummaryDashboard
+        totalMonthlySpending={totalMonthlySpending}
+        sharedAccountBalance={sharedAccountSettings.sharedAccountBalance}
+        anaActualSpent={anaActualSpent}
+        husbandActualSpent={husbandActualSpent}
+      />
 
-        {/* Individual Spending Card */}
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <h3 className="font-medium text-gray-900 mb-3 text-center">
-            Current Month Spending
-          </h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="text-center">
-              <div className="text-lg font-semibold text-black-600">
-                ₪{anaActualSpent.toFixed(2)}
-              </div>
-              <div className="text-xs text-gray-500">Ana</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-semibold text-black-600">
-                ₪{husbandActualSpent.toFixed(2)}
-              </div>
-              <div className="text-xs text-gray-500">Eido</div>
-            </div>
-          </div>
-        </div>
+      <ExpenseForm
+        amount={amount}
+        setAmount={setAmount}
+        category={category}
+        setCategory={setCategory}
+        person={person}
+        handlePersonChange={handlePersonChange}
+        storeName={storeName}
+        setStoreName={setStoreName}
+        description={description}
+        setDescription={setDescription}
+        showStoreDropdown={showStoreDropdown}
+        setShowStoreDropdown={setShowStoreDropdown}
+        filteredStores={filteredStores}
+        handleStoreSelect={handleStoreSelect}
+        addExpense={addExpense}
+        handleCameraCapture={handleCameraCapture}
+        isProcessingReceipt={isProcessingReceipt}
+      />
 
-        {/* Detailed Balance Card */}
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <h3 className="font-medium text-gray-900 mb-3 text-center">
-            Current Month Balance
-          </h3>
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">
-                Ana's Balance (₪{anaExpectedContribution.toFixed(0)}):
-              </span>
-              <span
-                className={`text-sm font-medium ${
-                  anaBalance <= 0 ? "text-green-600" : "text-red-600"
-                }`}
-              >
-                {anaBalance <= 0
-                  ? `₪${Math.abs(anaBalance).toFixed(2)}`
-                  : `-₪${Math.abs(anaBalance).toFixed(2)}`}
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">
-                Eido's Balance (₪{husbandExpectedContribution.toFixed(0)}):
-              </span>
-              <span
-                className={`text-sm font-medium ${
-                  husbandBalance <= 0 ? "text-green-600" : "text-red-600"
-                }`}
-              >
-                {husbandBalance <= 0
-                  ? `₪${Math.abs(husbandBalance).toFixed(2)}`
-                  : `-₪${Math.abs(husbandBalance).toFixed(2)}`}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <ExpensesList
+        filteredExpenses={filteredExpenses}
+        showSearchResults={showSearchResults}
+        searchMonth={searchMonth}
+        formatMonthDisplay={formatMonthDisplay}
+        showMonthlySearch={showMonthlySearch}
+        handleSearchClick={handleSearchClick}
+        availableMonths={availableMonths}
+        setSearchMonth={setSearchMonth}
+        setShowSearchResults={setShowSearchResults}
+        monthlyTotals={monthlyTotals}
+        handleDeleteClick={handleDeleteClick}
+        loadMoreMonths={loadMoreMonths}
+        hasMoreMonths={hasMoreMonths}
+        isLoadingMore={isLoadingMore}
+      />
 
-      {/* Add Expense Form */}
-      <div className="bg-white rounded-xl p-4 mb-4 shadow-sm border border-gray-100">
-        <form onSubmit={addExpense} className="space-y-3">
-          <input
-            type="number"
-            step="0.01"
-            placeholder="Amount (₪)"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            className="w-full p-3 border border-gray-200 rounded-lg text-base bg-gray-50 focus:bg-white focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-colors"
-            required
-          />
-
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="w-full p-3 border border-gray-200 rounded-lg text-base bg-gray-50 focus:bg-white focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-colors appearance-none"
-          >
-            <option value="groceries">🛒 Groceries</option>
-            <option value="bakery">🥖 Bakery</option>
-            <option value="pharm">💊 Pharmacy</option>
-            <option value="other">📝 Other</option>
-          </select>
-
-          <select
-            value={person}
-            onChange={(e) => handlePersonChange(e.target.value)}
-            className="w-full p-3 border border-gray-200 rounded-lg text-base bg-gray-50 focus:bg-white focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-colors appearance-none"
-          >
-            <option value="ana">👩 Ana</option>
-            <option value="husband">👨 Eido</option>
-          </select>
-
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Store name"
-              value={storeName}
-              onChange={(e) => {
-                setStoreName(e.target.value);
-                setShowStoreDropdown(true);
-              }}
-              onFocus={() => setShowStoreDropdown(true)}
-              onBlur={() => setTimeout(() => setShowStoreDropdown(false), 200)}
-              className="w-full p-3 border border-gray-200 rounded-lg text-base bg-gray-50 focus:bg-white focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-colors"
-              required
-            />
-
-            {showStoreDropdown && filteredStores.length > 0 && (
-              <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg mt-1 max-h-40 overflow-y-auto shadow-lg">
-                {filteredStores.map((store, index) => (
-                  <div
-                    key={index}
-                    className="p-2 hover:bg-gray-100 cursor-pointer text-sm"
-                    onClick={() => handleStoreSelect(store)}
-                  >
-                    {store}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <input
-            type="text"
-            placeholder="Comment (optional)"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="w-full p-3 border border-gray-200 rounded-lg text-base bg-gray-50 focus:bg-white focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-colors"
-          />
-
-          <button
-            type="submit"
-            className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-medium text-base hover:bg-blue-700 active:scale-95 transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-100"
-          >
-            Add Expense
-          </button>
-        </form>
-      </div>
-
-      {/* Expenses List */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="p-4 border-b border-gray-100 flex justify-between items-center">
-          <h2 className="font-medium text-gray-900">
-            {showSearchResults && searchMonth
-              ? `${formatMonthDisplay(searchMonth)} Expenses`
-              : "Recent Expenses"}
-          </h2>
-          <button
-            onClick={handleSearchClick}
-            className={`p-2 rounded-lg transition-colors ${
-              showMonthlySearch
-                ? "text-blue-600 bg-blue-50 hover:bg-blue-100"
-                : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
-            }`}
-            aria-label="Search by month"
-            title="Search by month"
-          >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
-          </button>
-        </div>
-
-        {/* Monthly Search Section - Now conditionally shown */}
-        {showMonthlySearch && (
-          <div className="p-4 bg-gray-50 border-b border-gray-100">
-            <div className="space-y-3">
-              <div className="relative">
-                <select
-                  value={searchMonth}
-                  onChange={(e) => {
-                    setSearchMonth(e.target.value);
-                    setShowSearchResults(!!e.target.value);
-                  }}
-                  className="w-full p-3 pr-8 border border-gray-200 rounded-lg text-base bg-white focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-colors appearance-none"
-                >
-                  <option value="">Select a month...</option>
-                  {availableMonths.map((month) => (
-                    <option key={month} value={month}>
-                      {formatMonthDisplay(month)}
-                    </option>
-                  ))}
-                </select>
-                {/* Custom dropdown arrow positioned more to the left */}
-                <div className="absolute inset-y-0 right-6 flex items-center pointer-events-none">
-                  <svg
-                    className="w-4 h-4 text-black"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </div>
-              </div>
-
-              {searchMonth && (
-                <button
-                  onClick={() => {
-                    setSearchMonth("");
-                    setShowSearchResults(false);
-                  }}
-                  className="w-full bg-gray-100 text-gray-700 py-2 px-4 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
-                >
-                  Clear Search
-                </button>
-              )}
-            </div>
-
-            {/* Monthly Totals Display */}
-            {showSearchResults && searchMonth && (
-              <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-                <h4 className="font-medium text-blue-900 mb-2">
-                  {formatMonthDisplay(searchMonth)} Summary
-                </h4>
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-blue-700">
-                      Total Month Spending:
-                    </span>
-                    <span className="font-semibold text-blue-900">
-                      ₪{monthlyTotals.monthTotal.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-blue-700">
-                      Ana's Spending:
-                    </span>
-                    <span className="font-semibold text-green-700">
-                      ₪{monthlyTotals.anaTotal.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-blue-700">
-                      Eido's Spending:
-                    </span>
-                    <span className="font-semibold text-purple-700">
-                      ₪{monthlyTotals.eidoTotal.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="text-xs text-blue-600 mt-2">
-                    {filteredExpenses.length} expense
-                    {filteredExpenses.length !== 1 ? "s" : ""} found
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {filteredExpenses.length === 0 ? (
-          <div className="p-8 text-center text-gray-500 text-sm">
-            {showSearchResults && searchMonth
-              ? `No expenses found for ${formatMonthDisplay(searchMonth)} 📅`
-              : "No expenses yet. Add your first one! 🎯"}
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-100">
-            {filteredExpenses.map((expense) => (
-              <div
-                key={expense.id}
-                className="p-4 hover:bg-gray-50 transition-colors"
-              >
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex-1 pr-3">
-                    <div className="font-medium text-gray-900 leading-tight">
-                      {expense.storeName}
-                    </div>
-                    {expense.description && (
-                      <div className="text-xs text-gray-500 mt-1">
-                        {expense.description}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3 flex-shrink-0">
-                    <div className="text-red-600 font-semibold text-right">
-                      ₪{expense.amount.toFixed(2)}
-                    </div>
-                    <button
-                      onClick={() => handleDeleteClick(expense.id)}
-                      className="text-red-500 hover:text-red-700 hover:bg-red-50 active:bg-red-100 p-2 rounded-lg transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
-                      aria-label="Delete expense"
-                    >
-                      <svg
-                        className="w-5 h-5 flex-shrink-0"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2 items-center text-xs">
-                  <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
-                    {expense.category}
-                  </span>
-                  <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
-                    {expense.person === "husband" ? "eido" : expense.person}
-                  </span>
-                  <span className="text-gray-400 ml-auto">{expense.date}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Settings Modal */}
-      {showSettingsModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-sm mx-auto shadow-xl">
-            <div className="text-center mb-4">
-              <h3 className="text-lg font-medium text-gray-900">Settings</h3>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <h4 className="text-sm font-medium text-gray-700 mb-2">
-                  Contribution Settings
-                </h4>
-
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">
-                      Ana's Contribution (₪)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={contributionSettings.anaAmount}
-                      onChange={(e) => {
-                        const anaAmount = parseFloat(e.target.value) || 0;
-                        setContributionSettings((prev) => ({
-                          ...prev,
-                          anaAmount: anaAmount,
-                          totalBudget: anaAmount + prev.husbandAmount,
-                        }));
-                      }}
-                      className="w-full p-2 border border-gray-200 rounded-lg text-sm"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">
-                      Eido's Contribution (₪)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={contributionSettings.husbandAmount}
-                      onChange={(e) => {
-                        const husbandAmount = parseFloat(e.target.value) || 0;
-                        setContributionSettings((prev) => ({
-                          ...prev,
-                          husbandAmount: husbandAmount,
-                          totalBudget: prev.anaAmount + husbandAmount,
-                        }));
-                      }}
-                      className="w-full p-2 border border-gray-200 rounded-lg text-sm"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="text-center p-3 bg-gray-50 rounded-lg">
-                <div className="text-sm">
-                  <div>Ana: ₪{contributionSettings.anaAmount.toFixed(2)}</div>
-                  <div>
-                    Eido: ₪{contributionSettings.husbandAmount.toFixed(2)}
-                  </div>
-                  <div className="font-medium text-blue-600 border-t pt-2 mt-2">
-                    Total Budget: ₪{contributionSettings.totalBudget.toFixed(2)}
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t pt-4">
-                <h4 className="text-sm font-medium text-gray-700 mb-2">
-                  Data Management
-                </h4>
-                <div className="space-y-2">
-                  <button
-                    onClick={exportData}
-                    className="w-full bg-green-100 text-green-800 py-2 px-4 rounded-lg text-sm font-medium hover:bg-green-200 transition-colors"
-                  >
-                    Export Data
-                  </button>
-                  <button
-                    onClick={clearAllData}
-                    className="w-full bg-red-100 text-red-800 py-2 px-4 rounded-lg text-sm font-medium hover:bg-red-200 transition-colors"
-                  >
-                    Clear All Data
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex space-x-3 mt-6">
-              <button
-                onClick={() => setShowSettingsModal(false)}
-                className="flex-1 bg-gray-100 text-gray-900 py-3 px-4 rounded-lg font-medium hover:bg-gray-200 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() =>
-                  updateContributionSettings(
-                    contributionSettings.anaAmount,
-                    contributionSettings.husbandAmount
-                  )
-                }
-                className="flex-1 bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors"
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-sm mx-auto shadow-xl">
-            <div className="text-center">
-              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
-                <svg
-                  className="h-6 w-6 text-red-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5C2.962 18.167 3.924 19 5.464 19z"
-                  />
-                </svg>
-              </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                Delete Expense
-              </h3>
-              <p className="text-sm text-gray-500 mb-6">
-                Are you sure you want to delete this expense? This action cannot
-                be undone.
-              </p>
-              <div className="flex space-x-3">
-                <button
-                  onClick={cancelDelete}
-                  className="flex-1 bg-gray-100 text-gray-900 py-3 px-4 rounded-lg font-medium hover:bg-gray-200 transition-colors min-h-[48px]"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmDelete}
-                  className="flex-1 bg-red-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-red-700 transition-colors min-h-[48px]"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modals
+        showDeleteModal={showDeleteModal}
+        confirmDelete={confirmDelete}
+        cancelDelete={cancelDelete}
+        showSettingsModal={showSettingsModal}
+        setShowSettingsModal={setShowSettingsModal}
+        sharedAccountSettings={sharedAccountSettings}
+        setSharedAccountSettings={setSharedAccountSettings}
+        updateSharedAccountSettings={updateSharedAccountSettings}
+        exportData={exportData}
+        clearAllData={clearAllData}
+        showConversionTable={showConversionTable}
+        setShowConversionTable={setShowConversionTable}
+        loadConversionEntries={loadConversionEntries}
+        conversionEntries={conversionEntries}
+        newConversionEntry={newConversionEntry}
+        setNewConversionEntry={setNewConversionEntry}
+        addConversionEntry={addConversionEntry}
+        conversionMessage={conversionMessage}
+      />
     </div>
   );
 }
