@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
     const db = await getDatabase();
     const settings = await db
       .collection('settings-data')
-      .findOne({ type: 'contribution' });
+      .findOne({ type: 'sharedAccount' });
 
     return NextResponse.json(
       { settings },
@@ -103,21 +103,19 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { anaAmount, husbandAmount, totalBudget } = body;
+    const { sharedAccountBalance } = body;
 
     // Validation
-    if (typeof anaAmount !== 'number' || typeof husbandAmount !== 'number') {
+    if (typeof sharedAccountBalance !== 'number' || sharedAccountBalance < 0) {
       return NextResponse.json(
-        { error: 'Invalid amount values' },
+        { error: 'Invalid shared account balance value' },
         { status: 400, headers: corsHeaders }
       );
     }
 
     const settingsData = {
-      type: 'contribution',
-      anaAmount,
-      husbandAmount,
-      totalBudget,
+      type: 'sharedAccount',
+      sharedAccountBalance,
       updatedAt: new Date()
     };
 
@@ -125,7 +123,7 @@ export async function POST(request: NextRequest) {
     await db
       .collection('settings-data')
       .updateOne(
-        { type: 'contribution' },
+        { type: 'sharedAccount' },
         { $set: settingsData },
         { upsert: true }
       );
