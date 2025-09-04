@@ -221,12 +221,6 @@ export default function Modals({
                   >
                     Export Data
                   </button>
-                  {/* <button
-                    onClick={clearAllData}
-                    className="w-full bg-red-100 text-red-800 py-2 px-4 rounded-lg text-sm font-medium hover:bg-red-200 transition-colors"
-                  >
-                    Clear All Data
-                  </button> */}
                 </div>
               </div>
             </div>
