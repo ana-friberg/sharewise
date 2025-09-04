@@ -13,6 +13,9 @@ export default function SummaryDashboard({
   anaActualSpent,
   husbandActualSpent,
 }: SummaryDashboardProps) {
+  // Calculate remaining balance after current month spending
+  const remainingBalance = sharedAccountBalance - totalMonthlySpending;
+  
   return (
     <div className="space-y-4 mb-4">
       {/* Current Month Header */}
@@ -34,7 +37,7 @@ export default function SummaryDashboard({
           </div>
           <div className="text-sm text-gray-500">Total Monthly Spending</div>
           <div className="text-xs text-gray-400 mt-1">
-            Shared Account Balance: ₪{sharedAccountBalance.toFixed(2)}
+            Remaining Balance: ₪{remainingBalance.toFixed(2)}
           </div>
         </div>
       </div>
