@@ -29,7 +29,7 @@ interface ModalsProps {
   newConversionEntry: ConversionEntry;
   setNewConversionEntry: (updater: (prev: ConversionEntry) => ConversionEntry) => void;
   addConversionEntry: () => Promise<void>;
-  deleteConversionEntry: (id: number) => Promise<void>;
+  conversionMessage: string;
 }
 
 export default function Modals({
@@ -50,7 +50,7 @@ export default function Modals({
   newConversionEntry,
   setNewConversionEntry,
   addConversionEntry,
-  deleteConversionEntry,
+  conversionMessage,
 }: ModalsProps) {
   return (
     <>
@@ -192,40 +192,20 @@ export default function Modals({
                         >
                           Add Entry
                         </button>
+                        
+                        {/* Success/Error Message */}
+                        {conversionMessage && (
+                          <div className={`text-xs text-center mt-2 p-2 rounded ${
+                            conversionMessage.includes('successfully') || conversionMessage.includes('Successfully')
+                              ? 'text-green-700 bg-green-50' 
+                              : 'text-red-700 bg-red-50'
+                          }`}>
+                            {conversionMessage}
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    {/* Existing conversion entries */}
-                    <div className="max-h-40 overflow-y-auto">
-                      {conversionEntries.length === 0 ? (
-                        <div className="text-xs text-gray-500 text-center py-2">
-                          No conversion entries yet
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          {conversionEntries.map((entry: any) => (
-                            <div key={entry.id} className="bg-gray-50 p-2 rounded text-xs">
-                              <div className="flex justify-between items-start">
-                                <div className="flex-1">
-                                  <div className="font-medium">{entry.store_name}</div>
-                                  <div className="text-gray-600">ID: {entry.id_name}</div>
-                                  <div className="text-blue-600">Category: {entry.category}</div>
-                                  {entry.comment && (
-                                    <div className="text-gray-500">{entry.comment}</div>
-                                  )}
-                                </div>
-                                <button
-                                  onClick={() => deleteConversionEntry(entry.id)}
-                                  className="text-red-600 hover:text-red-800 ml-2"
-                                >
-                                  ×
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
                   </div>
                 </div>
               )}
@@ -241,12 +221,12 @@ export default function Modals({
                   >
                     Export Data
                   </button>
-                  <button
+                  {/* <button
                     onClick={clearAllData}
                     className="w-full bg-red-100 text-red-800 py-2 px-4 rounded-lg text-sm font-medium hover:bg-red-200 transition-colors"
                   >
                     Clear All Data
-                  </button>
+                  </button> */}
                 </div>
               </div>
             </div>

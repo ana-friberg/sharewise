@@ -88,6 +88,7 @@ export default function Home() {
     category: "groceries",
     comment: ""
   });
+  const [conversionMessage, setConversionMessage] = useState<string>("");
 
   // Receipt processing loading state
   const [isProcessingReceipt, setIsProcessingReceipt] = useState<boolean>(false);
@@ -604,11 +605,15 @@ export default function Home() {
 
   const addConversionEntry = async (): Promise<void> => {
     if (!newConversionEntry.id_name || !newConversionEntry.store_name || !newConversionEntry.category) {
-      alert("Please fill in all required fields (ID Name, Store Name, Category)");
+      setConversionMessage("Please fill in all required fields (ID Name, Store Name, Category)");
+      // Clear message after 3 seconds
+      setTimeout(() => setConversionMessage(""), 3000);
       return;
     }
 
     try {
+      setConversionMessage(""); // Clear any previous messages
+      
       const response = await fetch("/api/conversion", {
         method: "POST",
         headers: {
@@ -625,31 +630,20 @@ export default function Home() {
           category: "groceries",
           comment: ""
         });
+        setConversionMessage("Entry added successfully!");
+        // Clear success message after 3 seconds
+        setTimeout(() => setConversionMessage(""), 3000);
       } else {
-        console.error("Failed to add conversion entry");
+        const errorData = await response.json();
+        setConversionMessage(`Failed to add entry: ${errorData.error || 'Unknown error'}`);
+        // Clear error message after 5 seconds
+        setTimeout(() => setConversionMessage(""), 5000);
       }
     } catch (error) {
       console.error("Error adding conversion entry:", error);
-    }
-  };
-
-  const deleteConversionEntry = async (id: number): Promise<void> => {
-    if (!confirm("Are you sure you want to delete this conversion entry?")) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/conversion?id=${id}`, {
-        method: "DELETE",
-      });
-
-      if (response.ok) {
-        await loadConversionEntries();
-      } else {
-        console.error("Failed to delete conversion entry");
-      }
-    } catch (error) {
-      console.error("Error deleting conversion entry:", error);
+      setConversionMessage("Error adding entry. Please try again.");
+      // Clear error message after 5 seconds
+      setTimeout(() => setConversionMessage(""), 5000);
     }
   };
 
@@ -934,7 +928,7 @@ export default function Home() {
         newConversionEntry={newConversionEntry}
         setNewConversionEntry={setNewConversionEntry}
         addConversionEntry={addConversionEntry}
-        deleteConversionEntry={deleteConversionEntry}
+        conversionMessage={conversionMessage}
       />
     </div>
   );
