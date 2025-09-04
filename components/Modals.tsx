@@ -21,11 +21,9 @@ interface ModalsProps {
   setSharedAccountSettings: (settings: SharedAccountSettings) => void;
   updateSharedAccountSettings: (balance: number) => Promise<void>;
   exportData: () => Promise<void>;
-  clearAllData: () => Promise<void>;
   showConversionTable: boolean;
   setShowConversionTable: (show: boolean) => void;
   loadConversionEntries: () => Promise<void>;
-  conversionEntries: any[];
   newConversionEntry: ConversionEntry;
   setNewConversionEntry: (updater: (prev: ConversionEntry) => ConversionEntry) => void;
   addConversionEntry: () => Promise<void>;
@@ -42,11 +40,9 @@ export default function Modals({
   setSharedAccountSettings,
   updateSharedAccountSettings,
   exportData,
-  clearAllData,
   showConversionTable,
   setShowConversionTable,
   loadConversionEntries,
-  conversionEntries,
   newConversionEntry,
   setNewConversionEntry,
   addConversionEntry,

@@ -81,7 +81,6 @@ export default function Home() {
 
   // Conversion table management
   const [showConversionTable, setShowConversionTable] = useState<boolean>(false);
-  const [conversionEntries, setConversionEntries] = useState<any[]>([]);
   const [newConversionEntry, setNewConversionEntry] = useState({
     id_name: "",
     store_name: "",
@@ -592,15 +591,7 @@ export default function Home() {
 
   // Conversion table management functions
   const loadConversionEntries = async (): Promise<void> => {
-    try {
-      const response = await fetch("/api/conversion");
-      if (response.ok) {
-        const data = await response.json();
-        setConversionEntries(data.entries || []);
-      }
-    } catch (error) {
-      console.error("Error loading conversion entries:", error);
-    }
+    // No-op function since we don't display existing entries
   };
 
   const addConversionEntry = async (): Promise<void> => {
@@ -790,32 +781,6 @@ export default function Home() {
     }
   };
 
-  // Clear all data functionality
-  const clearAllData = async (): Promise<void> => {
-    if (
-      !confirm(
-        "Are you sure you want to clear all data? This action cannot be undone."
-      )
-    ) {
-      return;
-    }
-
-    try {
-      // Delete all expenses
-      const deletePromises = expenses.map((expense) =>
-        fetch(`/api/expenses?id=${expense.id}`, { method: "DELETE" })
-      );
-      await Promise.all(deletePromises);
-
-      // Reset settings to default
-      await updateSharedAccountSettings(1000);
-
-      setExpenses([]);
-    } catch (error) {
-      console.error("Error clearing data:", error);
-    }
-  };
-
   // Handle search button click
   const handleSearchClick = (): void => {
     setShowMonthlySearch(!showMonthlySearch);
@@ -920,11 +885,9 @@ export default function Home() {
         setSharedAccountSettings={setSharedAccountSettings}
         updateSharedAccountSettings={updateSharedAccountSettings}
         exportData={exportData}
-        clearAllData={clearAllData}
         showConversionTable={showConversionTable}
         setShowConversionTable={setShowConversionTable}
         loadConversionEntries={loadConversionEntries}
-        conversionEntries={conversionEntries}
         newConversionEntry={newConversionEntry}
         setNewConversionEntry={setNewConversionEntry}
         addConversionEntry={addConversionEntry}
