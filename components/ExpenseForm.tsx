@@ -62,7 +62,7 @@ export default function ExpenseForm({
           <option value="bakery">🥖 Bakery</option>
           <option value="pharm">💊 Pharmacy</option>
 
-          {/* Weekly/Regular */}
+          {/* Weekly/Regular Used*/}
           <option value="restaurant">🍽️ Restaurant</option>
           <option value="entertainment">🎬 Entertainment</option>
           <option value="beauty">💄 Beauty</option>
