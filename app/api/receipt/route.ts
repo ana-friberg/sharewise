@@ -5,7 +5,7 @@ const openai = new OpenAI({
   baseURL: "https://openrouter.ai/api/v1",
   apiKey: process.env.OPENAI_KEY,
   defaultHeaders: {
-    "HTTP-Referer": "http://localhost:3000",
+    "HTTP-Referer": process.env.URL_DOMAIN || "http://localhost:3000",
     "X-Title": "Expenses App",
   },
 });
@@ -19,6 +19,35 @@ const VISION_MODELS = [
   "google/gemini-2.0-flash-exp:free",        // Original fallback
 ];
 
+// In your /api/receipt/route.ts file, replace the current prompt with this improved version:
+
+const improvedPrompt = `You are an expert receipt analyzer. Extract the store name and total amount from this receipt image.
+
+STORE NAME:
+- Look at the TOP of the receipt for the business name
+- Usually the largest, most prominent text at the beginning
+- Can be in Hebrew, English, German, or any language
+- Examples: "רמי לוי", "EDEKA", "Walmart", "סופר פארם"
+- IGNORE addresses, phone numbers, dates, receipt numbers
+
+TOTAL AMOUNT:
+- Find the final total amount to pay (usually at BOTTOM)
+- Look for keywords: "TOTAL", "סה״כ", "GESAMT", "SUMME"
+- Extract only the numeric value (ignore currency symbols ₪€$)
+- Ignore subtotals, tax amounts, individual item prices
+
+Return this exact JSON format:
+{
+  "storeName": "exact business name from receipt",
+  "totalAmount": numeric_value_only
+}
+
+Examples:
+- Store "רמי לוי שיווק השקל" → "storeName": "רמי לוי שיווק השקל"
+- Total "סה״כ לתשלום ₪45.50" → "totalAmount": 45.50
+- Store "EDEKA Markt" → "storeName": "EDEKA Markt"
+- Total "GESAMT €23.45" → "totalAmount": 23.45`;
+
 async function tryModel(model: string, image: string) {
   console.log(`Trying model: ${model}`);
   
@@ -30,7 +59,7 @@ async function tryModel(model: string, image: string) {
         content: [
           {
             type: "text",
-            text: "Analyze this receipt image and extract exactly 2 pieces of information. Return ONLY a valid JSON response in this exact format: {\"storeName\": \"store or business name\", \"totalAmount\": 25.50}. The totalAmount must be a number without currency symbols. Handle text in Hebrew, English, and German. If you cannot find the information, use \"Unknown\" for storeName and 0 for totalAmount."
+            text: improvedPrompt
           },
           {
             type: "image_url",
